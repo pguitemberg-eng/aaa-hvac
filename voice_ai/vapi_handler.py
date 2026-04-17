@@ -186,6 +186,18 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         update_call(call_id, duration_sec=max(duration_sec, 0),
                     full_transcript=transcript,
                     transcript_preview=transcript[:200])
+        try:
+            from twilio.rest import Client
+            twilio_client = Client(
+                os.getenv("TWILIO_ACCOUNT_SID"),
+                os.getenv("TWILIO_AUTH_TOKEN")
+            )
+            active_calls = twilio_client.calls.list(status="in-progress", limit=5)
+            for active_call in active_calls:
+                active_call.update(status="completed")
+            print(f"[HANGUP] Forced hangup on {len(active_calls)} call(s)")
+        except Exception as e:
+            print(f"[HANGUP] Error: {e}")
         return JSONResponse({"status": "logged"})
 
     return JSONResponse({"status": "ignored", "type": msg_type})
