@@ -2,55 +2,139 @@
 api/main.py
 Main FastAPI app. All routers mounted here.
 Run: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+Fixes applied:
+  - CORS restricted to Railway URL + localhost (not open to all)
+  - Scheduler with error logging (jobs won't silently fail)
+  - /health endpoint shows DB + scheduler status
+  - Startup/shutdown logs for easier debugging
 """
 
+import logging
 import os
 from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 
 load_dotenv()
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from booking.booking_handler import send_appointment_reminders
 
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("aaa-hvac")
+
+# ── Scheduler ─────────────────────────────────────────────────────────────────
 scheduler = AsyncIOScheduler()
 
 
+def scheduler_listener(event):
+    """Log scheduler job success or failure."""
+    if event.exception:
+        logger.error(f"[SCHEDULER] Job {event.job_id} FAILED: {event.exception}")
+    else:
+        logger.info(f"[SCHEDULER] Job {event.job_id} completed successfully")
+
+
+# ── CORS origins ──────────────────────────────────────────────────────────────
+def get_allowed_origins() -> list[str]:
+    """Build CORS whitelist from environment — never allow * in production."""
+    origins = [
+        "http://localhost:8000",
+        "http://localhost:8501",  # Streamlit local
+    ]
+    railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
+    if railway_domain:
+        origins.append(f"https://{railway_domain}")
+
+    # Allow extra origins via env var (comma-separated)
+    extra = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    if extra:
+        origins.extend([o.strip() for o in extra.split(",") if o.strip()])
+
+    return origins
+
+
+# ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    scheduler.add_job(send_appointment_reminders, "interval", minutes=30)
+    # Startup
+    scheduler.add_listener(scheduler_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
+    scheduler.add_job(
+        send_appointment_reminders,
+        "interval",
+        minutes=30,
+        id="appointment_reminders",
+        replace_existing=True,
+        misfire_grace_time=60,
+    )
     scheduler.start()
-    print("[MAIN] Scheduler started")
+    logger.info("[MAIN] Scheduler started — appointment reminders every 30 min")
+    logger.info(f"[MAIN] CORS allowed origins: {get_allowed_origins()}")
+
     yield
-    scheduler.shutdown()
+
+    # Shutdown
+    scheduler.shutdown(wait=False)
+    logger.info("[MAIN] Scheduler stopped")
 
 
+# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="AAA HVAC - AI Automation API",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=get_allowed_origins(),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
+# ── Routers ───────────────────────────────────────────────────────────────────
 from missed_call.missed_call_handler import router as missed_call_router
 from booking.booking_handler import router as booking_router
 from speed_to_lead.speed_to_lead import router as speed_router
 from voice_ai.vapi_handler import router as vapi_router
+from api.onboarding import router as onboarding_router
 
-app.include_router(missed_call_router, prefix="/twilio", tags=["Missed Call"])
-app.include_router(booking_router, prefix="/booking", tags=["Booking"])
-app.include_router(speed_router, prefix="/lead", tags=["Speed To Lead"])
-app.include_router(vapi_router, prefix="/vapi", tags=["Voice AI"])
+app.include_router(missed_call_router, prefix="/twilio",     tags=["Missed Call"])
+app.include_router(booking_router,     prefix="/booking",    tags=["Booking"])
+app.include_router(speed_router,       prefix="/lead",       tags=["Speed To Lead"])
+app.include_router(vapi_router,        prefix="/vapi",        tags=["Voice AI"])
+app.include_router(onboarding_router,  prefix="/onboarding", tags=["Onboarding"])
 
 
-@app.get("/health")
+# ── Health check ──────────────────────────────────────────────────────────────
+@app.get("/health", tags=["System"])
 async def health():
-    return {"status": "ok", "service": "AAA HVAC AI"}
+    """Detailed health check — DB connection + scheduler status."""
+    db_ok = False
+    try:
+        from db.postgres import get_conn
+        with get_conn() as conn:
+            conn.execute("SELECT 1")
+        db_ok = True
+    except Exception as e:
+        logger.warning(f"[HEALTH] DB check failed: {e}")
+
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "service": "AAA HVAC AI",
+        "version": "1.0.0",
+        "database": "connected" if db_ok else "unreachable",
+        "scheduler": "running" if scheduler.running else "stopped",
+        "environment": os.getenv("RAILWAY_ENVIRONMENT", "local"),
+    }
