@@ -1,6 +1,14 @@
-﻿"""AAA HVAC multi-client Streamlit dashboard.
+"""AAA HVAC multi-client Streamlit dashboard.
 
 Run: streamlit run dashboard.py
+
+Fixes applied:
+  - Dynamic Railway/localhost URL detection
+  - bcrypt password hashing (secure)
+  - ensure_schema() runs once via st.cache_resource
+  - ALTER TABLE constraints wrapped in try/except (PostgreSQL compat)
+  - Calendar/Appointments page added
+  - Integration status shows live Railway URL
 """
 
 import hashlib
@@ -8,6 +16,7 @@ import hmac
 import os
 import sys
 
+import bcrypt
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -23,9 +32,13 @@ BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 ADMIN_USER = os.getenv("DASHBOARD_ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("DASHBOARD_ADMIN_PASS", "")
 
+# ── Dynamic base URL (Railway vs local) ──────────────────────────────────────
+RAILWAY_URL = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
+BASE_URL = f"https://{RAILWAY_URL}" if RAILWAY_URL else "http://localhost:8000"
+
 st.set_page_config(
     page_title=f"{BUSINESS_NAME} - AI Command Center",
-    page_icon="*",
+    page_icon="❄️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -52,15 +65,34 @@ st.markdown(
     background: #1a2840; border: 1px solid #2a3f5a;
     border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;
   }
+  .status-ok  { color: #00d4aa; font-weight: 600; }
+  .status-bad { color: #f87171; font-weight: 600; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
 
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+# ── Password helpers (bcrypt) ─────────────────────────────────────────────────
 
+def hash_password(password: str) -> str:
+    """Return bcrypt hash. Falls back to SHA-256 for legacy rows."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Verify against bcrypt hash; fall back to legacy SHA-256 comparison."""
+    try:
+        if stored_hash.startswith("$2b$") or stored_hash.startswith("$2a$"):
+            return bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8"))
+        # Legacy SHA-256 fallback
+        legacy = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        return hmac.compare_digest(legacy, stored_hash)
+    except Exception:
+        return False
+
+
+# ── DB helpers ────────────────────────────────────────────────────────────────
 
 def query_df(sql: str, params=()) -> pd.DataFrame:
     try:
@@ -83,7 +115,11 @@ def execute(sql: str, params=()) -> bool:
         return False
 
 
+# ── Schema — cached so it only runs ONCE per app startup ─────────────────────
+
+@st.cache_resource(show_spinner=False)
 def ensure_schema():
+    """Create tables and add columns idempotently. Runs once per process."""
     execute(
         """
         CREATE TABLE IF NOT EXISTS clients (
@@ -98,21 +134,48 @@ def ensure_schema():
     )
     execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS client_id INTEGER")
     execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS client_id INTEGER")
-    execute(
+
+    # PostgreSQL does NOT support IF NOT EXISTS for constraints — use try/except
+    for sql in [
         """
         ALTER TABLE leads
-        ADD CONSTRAINT IF NOT EXISTS leads_client_id_fkey
+        ADD CONSTRAINT leads_client_id_fkey
         FOREIGN KEY (client_id) REFERENCES clients(id)
-        """
-    )
-    execute(
+        """,
         """
         ALTER TABLE voice_calls
-        ADD CONSTRAINT IF NOT EXISTS voice_calls_client_id_fkey
+        ADD CONSTRAINT voice_calls_client_id_fkey
         FOREIGN KEY (client_id) REFERENCES clients(id)
+        """,
+    ]:
+        try:
+            with pg_get_conn() as conn:
+                conn.execute(sql)
+                conn.commit()
+        except Exception:
+            pass  # Constraint already exists — safe to ignore
+
+    # Appointments table for calendar page
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS appointments (
+            id SERIAL PRIMARY KEY,
+            client_id INTEGER REFERENCES clients(id),
+            lead_name TEXT,
+            phone TEXT,
+            email TEXT,
+            service_type TEXT,
+            scheduled_at TIMESTAMPTZ,
+            calendly_event_uri TEXT,
+            status TEXT DEFAULT 'scheduled',
+            notes TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
         """
     )
 
+
+# ── Scope helpers ─────────────────────────────────────────────────────────────
 
 def get_client_scope_clause():
     user = st.session_state.get("auth_user")
@@ -143,6 +206,16 @@ def get_voice_calls(limit=100):
     )
 
 
+def get_appointments(limit=200):
+    where_sql, where_params = get_client_scope_clause()
+    return query_df(
+        f"SELECT id, client_id, lead_name, phone, email, service_type, scheduled_at, "
+        f"status, notes, calendly_event_uri, created_at "
+        f"FROM appointments WHERE {where_sql} ORDER BY scheduled_at DESC LIMIT %s",
+        (*where_params, limit),
+    )
+
+
 def get_stats():
     df = get_leads(1000)
     if df.empty:
@@ -153,7 +226,8 @@ def get_stats():
     disqualified = int((df["outcome"] == "disqualified").sum())
     emergency = int((df["urgency"] == "emergency").sum())
     rate = round(booked / total * 100, 1) if total else 0
-    return dict(total=total, booked=booked, escalated=escalated, disqualified=disqualified, rate=rate, emergency=emergency)
+    return dict(total=total, booked=booked, escalated=escalated,
+                disqualified=disqualified, rate=rate, emergency=emergency)
 
 
 def check_status():
@@ -169,17 +243,15 @@ def check_status():
     }
 
 
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
 def authenticate(username: str, password: str):
     if username == ADMIN_USER and ADMIN_PASS and hmac.compare_digest(password, ADMIN_PASS):
-        return {"role": "admin", "username": username, "company_name": "Platform Admin", "client_id": None}
+        return {"role": "admin", "username": username,
+                "company_name": "Platform Admin", "client_id": None}
 
     df = query_df(
-        """
-        SELECT id, company_name, username, password_hash, active
-        FROM clients
-        WHERE username = %s
-        LIMIT 1
-        """,
+        "SELECT id, company_name, username, password_hash, active FROM clients WHERE username = %s LIMIT 1",
         (username,),
     )
     if df.empty:
@@ -189,7 +261,7 @@ def authenticate(username: str, password: str):
     if not row["active"]:
         return None
 
-    if hmac.compare_digest(hash_password(password), str(row["password_hash"])):
+    if verify_password(password, str(row["password_hash"])):
         return {
             "role": "client",
             "username": row["username"],
@@ -199,15 +271,15 @@ def authenticate(username: str, password: str):
     return None
 
 
-def render_login():
-    st.title(f"{BUSINESS_NAME} Dashboard Login")
-    st.caption("Sign in as admin or a client user.")
+# ── Pages ─────────────────────────────────────────────────────────────────────
 
+def render_login():
+    st.title(f"🌡️ {BUSINESS_NAME} Dashboard")
+    st.caption("Sign in as admin or a client user.")
     with st.form("login_form"):
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Login")
-
     if submitted:
         auth_user = authenticate(username.strip(), password)
         if auth_user:
@@ -219,8 +291,7 @@ def render_login():
 
 
 def render_manage_clients_page():
-    st.title("Manage Clients")
-
+    st.title("👥 Manage Clients")
     with st.form("create_client"):
         st.subheader("Create New Client")
         c1, c2 = st.columns(2)
@@ -238,14 +309,11 @@ def render_manage_clients_page():
             st.error("Company name, username, and password are required.")
         else:
             ok = execute(
-                """
-                INSERT INTO clients (company_name, username, password_hash, phone_number, active)
-                VALUES (%s, %s, %s, %s, %s)
-                """,
+                "INSERT INTO clients (company_name, username, password_hash, phone_number, active) VALUES (%s,%s,%s,%s,%s)",
                 (company_name.strip(), username.strip(), hash_password(password), phone_number.strip(), active),
             )
             if ok:
-                st.success("Client created.")
+                st.success("✅ Client created.")
                 st.rerun()
             else:
                 st.error("Could not create client (username may already exist).")
@@ -259,9 +327,11 @@ def render_manage_clients_page():
         return
 
     st.dataframe(clients, use_container_width=True, height=300)
-    selection = st.selectbox("Select client to update", clients["id"].tolist(), format_func=lambda cid: f"{cid} - {clients[clients['id'] == cid].iloc[0]['company_name']}")
+    selection = st.selectbox(
+        "Select client to update", clients["id"].tolist(),
+        format_func=lambda cid: f"{cid} – {clients[clients['id'] == cid].iloc[0]['company_name']}"
+    )
     selected = clients[clients["id"] == selection].iloc[0]
-
     new_status = st.checkbox("Client Active", value=bool(selected["active"]))
     if st.button("Save Client Status"):
         ok = execute("UPDATE clients SET active = %s WHERE id = %s", (new_status, int(selection)))
@@ -273,7 +343,7 @@ def render_manage_clients_page():
 
 
 def render_pipeline_page():
-    st.title("Live Pipeline")
+    st.title("📊 Live Pipeline")
     stats = get_stats()
 
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -286,12 +356,8 @@ def render_pipeline_page():
     ]:
         with col:
             st.markdown(
-                f"""
-            <div class="metric-card">
-              <div class="metric-label">{label}</div>
-              <div class="metric-value">{val}</div>
-              <div class="metric-sub">{sub}</div>
-            </div>""",
+                f'<div class="metric-card"><div class="metric-label">{label}</div>'
+                f'<div class="metric-value">{val}</div><div class="metric-sub">{sub}</div></div>',
                 unsafe_allow_html=True,
             )
 
@@ -315,17 +381,13 @@ def render_pipeline_page():
             counts = df["outcome"].value_counts().reset_index()
             counts.columns = ["Outcome", "Count"]
             fig = px.pie(
-                counts,
-                names="Outcome",
-                values="Count",
+                counts, names="Outcome", values="Count",
                 color_discrete_sequence=["#00d4aa", "#f59e0b", "#8ca0b8", "#1a7fd4"],
                 hole=0.55,
             )
             fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#8ca0b8"),
-                height=280,
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#8ca0b8"), height=280,
                 margin=dict(t=10, b=10, l=10, r=10),
             )
             st.plotly_chart(fig, use_container_width=True)
@@ -334,7 +396,7 @@ def render_pipeline_page():
 
 
 def render_leads_page():
-    st.title("Lead Database")
+    st.title("📋 Lead Database")
     df = get_leads(500)
     if df.empty:
         st.info("No leads in database.")
@@ -349,7 +411,10 @@ def render_leads_page():
         urgency_f = st.selectbox("Urgency", ["All", "emergency", "urgent", "routine"])
 
     if search:
-        df = df[df["name"].str.contains(search, case=False, na=False) | df["phone"].str.contains(search, case=False, na=False)]
+        df = df[
+            df["name"].str.contains(search, case=False, na=False) |
+            df["phone"].str.contains(search, case=False, na=False)
+        ]
     if outcome_f != "All":
         df = df[df["outcome"] == outcome_f]
     if urgency_f != "All":
@@ -362,7 +427,9 @@ def render_leads_page():
     st.caption(f"{len(df)} records")
     st.dataframe(df[show_cols], use_container_width=True, height=520)
 
-    df_fu = query_df("SELECT lead_id, followup_num, channel, tone_used, message, sent_at FROM followup_log ORDER BY sent_at DESC LIMIT 100")
+    df_fu = query_df(
+        "SELECT lead_id, followup_num, channel, tone_used, message, sent_at FROM followup_log ORDER BY sent_at DESC LIMIT 100"
+    )
     st.subheader("Follow-up Log")
     if not df_fu.empty:
         st.dataframe(df_fu, use_container_width=True, height=280)
@@ -370,8 +437,109 @@ def render_leads_page():
         st.info("No follow-ups logged yet.")
 
 
+def render_calendar_page():
+    st.title("📅 Appointments & Calendar")
+
+    df = get_appointments(200)
+
+    # ── Summary metrics ──
+    c1, c2, c3, c4 = st.columns(4)
+    total_appts = len(df)
+    scheduled = int((df["status"] == "scheduled").sum()) if not df.empty else 0
+    completed = int((df["status"] == "completed").sum()) if not df.empty else 0
+    cancelled = int((df["status"] == "cancelled").sum()) if not df.empty else 0
+
+    for col, label, val, color in [
+        (c1, "Total Appointments", total_appts, "#1a7fd4"),
+        (c2, "Scheduled", scheduled, "#00d4aa"),
+        (c3, "Completed", completed, "#f59e0b"),
+        (c4, "Cancelled", cancelled, "#f87171"),
+    ]:
+        with col:
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-label">{label}</div>'
+                f'<div class="metric-value" style="color:{color}">{val}</div></div>',
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("---")
+
+    if df.empty:
+        st.info("No appointments yet. They will appear here once leads book via Calendly.")
+        return
+
+    # ── Filters ──
+    col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1:
+        search = st.text_input("Search name/phone", "")
+    with col_f2:
+        status_f = st.selectbox("Status", ["All", "scheduled", "completed", "cancelled", "no_show"])
+    with col_f3:
+        service_f = st.selectbox("Service Type", ["All"] + sorted(df["service_type"].dropna().unique().tolist()))
+
+    filtered = df.copy()
+    if search:
+        filtered = filtered[
+            filtered["lead_name"].str.contains(search, case=False, na=False) |
+            filtered["phone"].str.contains(search, case=False, na=False)
+        ]
+    if status_f != "All":
+        filtered = filtered[filtered["status"] == status_f]
+    if service_f != "All":
+        filtered = filtered[filtered["service_type"] == service_f]
+
+    st.caption(f"{len(filtered)} appointments")
+
+    show_cols = ["lead_name", "phone", "email", "service_type", "scheduled_at", "status", "notes"]
+    if st.session_state["auth_user"]["role"] == "admin":
+        show_cols = ["client_id"] + show_cols
+
+    st.dataframe(filtered[show_cols], use_container_width=True, height=460)
+
+    # ── Update appointment status ──
+    st.markdown("---")
+    st.subheader("Update Appointment Status")
+    if not filtered.empty:
+        appt_options = filtered["id"].tolist()
+        selected_id = st.selectbox(
+            "Select Appointment",
+            appt_options,
+            format_func=lambda i: f"#{i} – {filtered[filtered['id'] == i].iloc[0]['lead_name']} ({filtered[filtered['id'] == i].iloc[0]['scheduled_at']})"
+        )
+        new_status = st.selectbox("New Status", ["scheduled", "completed", "cancelled", "no_show"])
+        notes_input = st.text_area("Notes (optional)")
+        if st.button("Update Appointment"):
+            ok = execute(
+                "UPDATE appointments SET status = %s, notes = %s WHERE id = %s",
+                (new_status, notes_input, int(selected_id))
+            )
+            if ok:
+                st.success("✅ Appointment updated.")
+                st.rerun()
+            else:
+                st.error("Failed to update appointment.")
+
+    # ── Upcoming this week ──
+    st.markdown("---")
+    st.subheader("Upcoming This Week")
+    upcoming = query_df(
+        """
+        SELECT lead_name, phone, service_type, scheduled_at, status
+        FROM appointments
+        WHERE scheduled_at BETWEEN NOW() AND NOW() + INTERVAL '7 days'
+          AND status = 'scheduled'
+        ORDER BY scheduled_at ASC
+        LIMIT 20
+        """
+    )
+    if upcoming.empty:
+        st.info("No upcoming appointments this week.")
+    else:
+        st.dataframe(upcoming, use_container_width=True, height=280)
+
+
 def render_voice_calls_page():
-    st.title("Voice AI - Vapi.ai Call Log")
+    st.title("📞 Voice AI — Vapi.ai Call Log")
     df_calls = get_voice_calls(50)
     if df_calls.empty:
         st.info("No voice calls logged yet.")
@@ -381,8 +549,8 @@ def render_voice_calls_page():
     with c1:
         st.metric("Total Calls", len(df_calls))
     with c2:
-        avg_duration = int(df_calls["duration_sec"].mean()) if "duration_sec" in df_calls.columns and not df_calls["duration_sec"].isna().all() else 0
-        st.metric("Avg Duration", f"{avg_duration}s")
+        avg_dur = int(df_calls["duration_sec"].mean()) if "duration_sec" in df_calls.columns and not df_calls["duration_sec"].isna().all() else 0
+        st.metric("Avg Duration", f"{avg_dur}s")
     with c3:
         st.metric("Booked", int((df_calls["outcome"] == "booked").sum()))
 
@@ -390,34 +558,45 @@ def render_voice_calls_page():
 
 
 def render_system_status_page():
-    st.title("Integration Status")
+    st.title("⚙️ Integration Status")
+
+    # ── Live URL (dynamic) ──
+    st.subheader("Live Server URL")
+    st.code(BASE_URL)
+
     status = check_status()
     col_a, col_b = st.columns(2)
     items = list(status.items())
     for col, section in [(col_a, items[:4]), (col_b, items[4:])]:
         with col:
             for service, ok in section:
-                st.write(f"{'OK' if ok else 'MISSING'} - {service}")
+                icon = "✅" if ok else "❌"
+                label = "OK" if ok else "MISSING"
+                css = "status-ok" if ok else "status-bad"
+                st.markdown(
+                    f'{icon} <span class="{css}">{label}</span> — {service}',
+                    unsafe_allow_html=True,
+                )
 
     st.subheader("API Endpoints")
     st.code(
-        """
-GET http://localhost:8000/health
-POST http://localhost:8000/twilio/inbound
-POST http://localhost:8000/twilio/missed-call
-POST http://localhost:8000/twilio/sms-reply
-POST http://localhost:8000/booking/calendly-webhook
-POST http://localhost:8000/lead/web-form
-POST http://localhost:8000/lead/sms-inbound
-POST http://localhost:8000/lead/manual
-POST http://localhost:8000/vapi/webhook
-POST http://localhost:8000/vapi/outbound
+        f"""
+GET  {BASE_URL}/health
+POST {BASE_URL}/twilio/inbound
+POST {BASE_URL}/twilio/missed-call
+POST {BASE_URL}/twilio/sms-reply
+POST {BASE_URL}/booking/calendly-webhook
+POST {BASE_URL}/lead/web-form
+POST {BASE_URL}/lead/sms-inbound
+POST {BASE_URL}/lead/manual
+POST {BASE_URL}/vapi/webhook
+POST {BASE_URL}/vapi/outbound
     """
     )
 
 
 def render_inject_lead_page():
-    st.title("Inject a Test Lead")
+    st.title("🧪 Inject a Test Lead")
     st.caption("Push a lead directly into the agent pipeline without a real phone call.")
 
     with st.form("inject_form"):
@@ -428,7 +607,10 @@ def render_inject_lead_page():
             email = st.text_input("Email", "john@example.com")
             address = st.text_input("Address", "123 Main St, Hempstead NY")
         with c2:
-            service = st.selectbox("Service Type", ["AC not cooling", "Heater not working", "Emergency HVAC repair", "Annual maintenance", "Duct cleaning", "New installation"])
+            service = st.selectbox("Service Type", [
+                "AC not cooling", "Heater not working", "Emergency HVAC repair",
+                "Annual maintenance", "Duct cleaning", "New installation"
+            ])
             urgency = st.selectbox("Urgency", ["routine", "urgent", "emergency"])
             budget = st.text_input("Budget", "$200-500")
             message = st.text_area("Customer Message", "My AC stopped working and it is very hot inside.", height=80)
@@ -474,8 +656,10 @@ def render_inject_lead_page():
             st.error(f"Agent error: {exc}")
 
 
+# ── Main ──────────────────────────────────────────────────────────────────────
+
 def main():
-    ensure_schema()
+    ensure_schema()  # Runs once per process (cached)
 
     if "auth_user" not in st.session_state:
         st.session_state["auth_user"] = None
@@ -486,35 +670,33 @@ def main():
 
     auth_user = st.session_state["auth_user"]
     with st.sidebar:
-        st.markdown(f"## {BUSINESS_NAME}")
+        st.markdown(f"## ❄️ {BUSINESS_NAME}")
         st.markdown(f"**Signed in:** `{auth_user['username']}` ({auth_user['role']})")
         if auth_user["role"] == "client":
             st.caption(auth_user["company_name"])
 
-        pages = ["Pipeline", "Leads", "Voice Calls", "System Status", "Inject Lead"]
+        pages = ["Pipeline", "Leads", "Appointments", "Voice Calls", "System Status", "Inject Lead"]
         if auth_user["role"] == "admin":
             pages.insert(0, "Manage Clients")
 
         page = st.radio("Navigation", pages)
         st.markdown("---")
-        if st.button("Refresh"):
+        if st.button("🔄 Refresh"):
             st.rerun()
-        if st.button("Logout"):
+        if st.button("🚪 Logout"):
             st.session_state["auth_user"] = None
             st.rerun()
 
-    if page == "Manage Clients":
-        render_manage_clients_page()
-    elif page == "Pipeline":
-        render_pipeline_page()
-    elif page == "Leads":
-        render_leads_page()
-    elif page == "Voice Calls":
-        render_voice_calls_page()
-    elif page == "System Status":
-        render_system_status_page()
-    elif page == "Inject Lead":
-        render_inject_lead_page()
+    dispatch = {
+        "Manage Clients": render_manage_clients_page,
+        "Pipeline": render_pipeline_page,
+        "Leads": render_leads_page,
+        "Appointments": render_calendar_page,
+        "Voice Calls": render_voice_calls_page,
+        "System Status": render_system_status_page,
+        "Inject Lead": render_inject_lead_page,
+    }
+    dispatch.get(page, render_pipeline_page)()
 
 
 if __name__ == "__main__":
