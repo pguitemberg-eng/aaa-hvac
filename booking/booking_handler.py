@@ -11,7 +11,6 @@ Calendly setup:
 """
 
 import os
-import sqlite3
 import hashlib
 import hmac
 import asyncio
@@ -22,6 +21,9 @@ from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from psycopg.rows import dict_row
+
+from db.postgres import get_conn
 
 load_dotenv()
 
@@ -31,7 +33,6 @@ CALENDLY_WEBHOOK_SECRET = os.getenv("CALENDLY_WEBHOOK_SECRET", "")
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 BUSINESS_PHONE = os.getenv("BUSINESS_PHONE", "")
 BUSINESS_EMAIL = os.getenv("BUSINESS_EMAIL", "")
-DB_PATH = os.getenv("SQLITE_DB_PATH", "memory/hvac_leads.db")
 
 
 def _format_dt(dt: datetime) -> str:
@@ -48,37 +49,47 @@ def _format_dt_short(dt: datetime) -> str:
 
 
 def ensure_bookings_table():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
+    with get_conn() as conn:
+        conn.execute("""
         CREATE TABLE IF NOT EXISTS bookings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGSERIAL PRIMARY KEY,
             calendly_event_id TEXT UNIQUE,
             lead_phone TEXT,
             lead_name TEXT,
             lead_email TEXT,
             service_type TEXT,
             urgency TEXT DEFAULT 'routine',
-            scheduled_at TEXT,
+            scheduled_at TIMESTAMPTZ,
             duration_min INTEGER DEFAULT 120,
             technician TEXT,
             status TEXT DEFAULT 'confirmed',
             cancellation_reason TEXT,
             calendly_payload TEXT,
-            confirmed_at TEXT DEFAULT (datetime('now')),
-            updated_at TEXT DEFAULT (datetime('now'))
+            confirmed_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
         )
     """)
-    conn.commit()
-    conn.close()
+        conn.commit()
 
 
 def save_booking(data: dict) -> int:
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.execute(
-        """INSERT OR REPLACE INTO bookings
+    with get_conn() as conn:
+        cur = conn.execute(
+        """INSERT INTO bookings
            (calendly_event_id, lead_phone, lead_name, lead_email,
             service_type, urgency, scheduled_at, status, calendly_payload)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+           ON CONFLICT (calendly_event_id) DO UPDATE SET
+              lead_phone = EXCLUDED.lead_phone,
+              lead_name = EXCLUDED.lead_name,
+              lead_email = EXCLUDED.lead_email,
+              service_type = EXCLUDED.service_type,
+              urgency = EXCLUDED.urgency,
+              scheduled_at = EXCLUDED.scheduled_at,
+              status = EXCLUDED.status,
+              calendly_payload = EXCLUDED.calendly_payload,
+              updated_at = NOW()
+           RETURNING id""",
         (
             data.get("event_id"),
             data.get("phone"),
@@ -91,41 +102,37 @@ def save_booking(data: dict) -> int:
             data.get("raw_payload", ""),
         ),
     )
-    row_id = cur.lastrowid
-    conn.commit()
-    conn.close()
+        row = cur.fetchone()
+        row_id = row[0] if row else 0
+        conn.commit()
     return row_id
 
 
 def update_booking_status(event_id: str, status: str, reason: str = ""):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        "UPDATE bookings SET status = ?, cancellation_reason = ?, updated_at = datetime('now') WHERE calendly_event_id = ?",
-        (status, reason, event_id),
-    )
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE bookings SET status = %s, cancellation_reason = %s, updated_at = NOW() WHERE calendly_event_id = %s",
+            (status, reason, event_id),
+        )
+        conn.commit()
 
 
 def get_lead_by_phone(phone: str) -> Optional[dict]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM leads WHERE phone = ? ORDER BY created_at DESC LIMIT 1",
-        (phone,),
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    with get_conn(row_factory=dict_row) as conn:
+        row = conn.execute(
+            "SELECT * FROM leads WHERE phone = %s ORDER BY created_at DESC LIMIT 1",
+            (phone,),
+        ).fetchone()
+        return dict(row) if row else None
 
 
 def update_lead_booking_confirmed(phone: str, booking_time: str):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        "UPDATE leads SET outcome = 'booked', booking_confirmed = 1, updated_at = datetime('now') WHERE phone = ?",
-        (phone,),
-    )
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE leads SET outcome = 'booked', booking_confirmed = 1, updated_at = NOW() WHERE phone = %s",
+            (phone,),
+        )
+        conn.commit()
 
 
 def verify_calendly_signature(payload: bytes, signature_header: str) -> bool:
@@ -406,30 +413,28 @@ def _handle_cancellation(invitee: dict, reason: str):
 def send_appointment_reminders():
     """Called by scheduler every 30 minutes."""
     ensure_bookings_table()
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    now = datetime.utcnow()
+    with get_conn(row_factory=dict_row) as conn:
+        now = datetime.utcnow()
 
-    rows_24h = conn.execute(
-        """SELECT * FROM bookings WHERE status = 'confirmed'
-           AND scheduled_at BETWEEN ? AND ?""",
-        ((now + timedelta(hours=23)).isoformat(), (now + timedelta(hours=25)).isoformat()),
-    ).fetchall()
-    for row in rows_24h:
-        _send_reminder(dict(row), hours_before=24)
-        conn.execute("UPDATE bookings SET status = 'reminder_sent', updated_at = datetime('now') WHERE id = ?", (row["id"],))
+        rows_24h = conn.execute(
+            """SELECT * FROM bookings WHERE status = 'confirmed'
+               AND scheduled_at BETWEEN %s AND %s""",
+            (now + timedelta(hours=23), now + timedelta(hours=25)),
+        ).fetchall()
+        for row in rows_24h:
+            _send_reminder(dict(row), hours_before=24)
+            conn.execute("UPDATE bookings SET status = 'reminder_sent', updated_at = NOW() WHERE id = %s", (row["id"],))
 
-    rows_2h = conn.execute(
-        """SELECT * FROM bookings WHERE status IN ('confirmed', 'reminder_sent')
-           AND scheduled_at BETWEEN ? AND ?""",
-        ((now + timedelta(hours=1, minutes=45)).isoformat(), (now + timedelta(hours=2, minutes=15)).isoformat()),
-    ).fetchall()
-    for row in rows_2h:
-        _send_reminder(dict(row), hours_before=2)
-        conn.execute("UPDATE bookings SET status = 'reminder_2h', updated_at = datetime('now') WHERE id = ?", (row["id"],))
+        rows_2h = conn.execute(
+            """SELECT * FROM bookings WHERE status IN ('confirmed', 'reminder_sent')
+               AND scheduled_at BETWEEN %s AND %s""",
+            (now + timedelta(hours=1, minutes=45), now + timedelta(hours=2, minutes=15)),
+        ).fetchall()
+        for row in rows_2h:
+            _send_reminder(dict(row), hours_before=2)
+            conn.execute("UPDATE bookings SET status = 'reminder_2h', updated_at = NOW() WHERE id = %s", (row["id"],))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
 
 def _send_reminder(booking: dict, hours_before: int):
@@ -438,10 +443,13 @@ def _send_reminder(booking: dict, hours_before: int):
     sched = booking.get("scheduled_at", "")
 
     try:
-        dt = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+        if isinstance(sched, datetime):
+            dt = sched
+        else:
+            dt = datetime.fromisoformat(str(sched).replace("Z", "+00:00"))
         display_time = _format_dt_short(dt)
     except Exception:
-        display_time = sched
+        display_time = str(sched)
 
     if hours_before == 24:
         body = f"Reminder: Your HVAC appointment with {BUSINESS_NAME} is TOMORROW ({display_time}). Reply CONFIRM to confirm or call {BUSINESS_PHONE} to reschedule."
@@ -459,29 +467,26 @@ def _send_reminder(booking: dict, hours_before: int):
 @router.get("/upcoming")
 async def get_upcoming_bookings(days: int = 7):
     ensure_bookings_table()
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    end_date = (datetime.utcnow() + timedelta(days=days)).isoformat()
-    rows = conn.execute(
-        """SELECT lead_name, lead_phone, service_type, urgency, scheduled_at, status, technician
-           FROM bookings WHERE status NOT IN ('cancelled', 'completed')
-           AND scheduled_at >= datetime('now') AND scheduled_at <= ?
-           ORDER BY scheduled_at ASC""",
-        (end_date,),
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with get_conn(row_factory=dict_row) as conn:
+        end_date = datetime.utcnow() + timedelta(days=days)
+        rows = conn.execute(
+            """SELECT lead_name, lead_phone, service_type, urgency, scheduled_at, status, technician
+               FROM bookings WHERE status NOT IN ('cancelled', 'completed')
+               AND scheduled_at >= NOW() AND scheduled_at <= %s
+               ORDER BY scheduled_at ASC""",
+            (end_date,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 @router.get("/stats")
 async def get_booking_stats():
     ensure_bookings_table()
-    conn = sqlite3.connect(DB_PATH)
-    total = conn.execute("SELECT COUNT(*) FROM bookings").fetchone()[0]
-    confirmed = conn.execute("SELECT COUNT(*) FROM bookings WHERE status != 'cancelled'").fetchone()[0]
-    cancelled = conn.execute("SELECT COUNT(*) FROM bookings WHERE status = 'cancelled'").fetchone()[0]
-    completed = conn.execute("SELECT COUNT(*) FROM bookings WHERE status = 'completed'").fetchone()[0]
-    conn.close()
+    with get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM bookings").fetchone()[0]
+        confirmed = conn.execute("SELECT COUNT(*) FROM bookings WHERE status != 'cancelled'").fetchone()[0]
+        cancelled = conn.execute("SELECT COUNT(*) FROM bookings WHERE status = 'cancelled'").fetchone()[0]
+        completed = conn.execute("SELECT COUNT(*) FROM bookings WHERE status = 'completed'").fetchone()[0]
     return {
         "total_bookings": total,
         "confirmed": confirmed,
