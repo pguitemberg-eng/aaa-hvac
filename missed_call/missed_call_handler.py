@@ -7,6 +7,7 @@ Twilio setup:
 """
 
 import os
+import sqlite3
 import asyncio
 from datetime import datetime
 from typing import Optional
@@ -17,8 +18,6 @@ from twilio.twiml.voice_response import VoiceResponse
 from twilio.rest import Client as TwilioClient
 from dotenv import load_dotenv
 
-from db.postgres import get_conn
-
 load_dotenv()
 
 router = APIRouter()
@@ -28,6 +27,7 @@ TWILIO_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM = os.getenv("TWILIO_PHONE_NUMBER", "")
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 BUSINESS_PHONE = os.getenv("BUSINESS_PHONE", "")
+DB_PATH = os.getenv("SQLITE_DB_PATH", "memory/hvac_leads.db")
 
 ACK_SMS = (
     "Hi! You just called {business}. Sorry we missed you. "
@@ -38,49 +38,45 @@ ACK_SMS = (
 
 
 def ensure_missed_calls_table():
-    with get_conn() as conn:
-        conn.execute("""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS missed_calls (
-            id BIGSERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             phone TEXT NOT NULL,
             call_sid TEXT,
             sms_sent INTEGER DEFAULT 0,
             replied INTEGER DEFAULT 0,
             reply_text TEXT,
             outcome TEXT DEFAULT 'pending',
-            created_at TIMESTAMPTZ DEFAULT NOW(),
+            created_at TEXT DEFAULT (datetime('now')),
             replied_at TEXT
         )
     """)
-        conn.commit()
+    conn.commit()
+    conn.close()
 
 
 def log_missed_call(phone: str, call_sid: str) -> int:
-    with get_conn() as conn:
-        cur = conn.execute(
-            "INSERT INTO missed_calls (phone, call_sid) VALUES (%s, %s) RETURNING id",
-            (phone, call_sid),
-        )
-        row = cur.fetchone()
-        conn.commit()
-        return row[0] if row else 0
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "INSERT INTO missed_calls (phone, call_sid) VALUES (?, ?)",
+        (phone, call_sid),
+    )
+    row_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return row_id
 
 
 def update_missed_call(phone: str, **kwargs):
-    with get_conn() as conn:
-        sets = ", ".join(f"{k} = %s" for k in kwargs)
-        conn.execute(
-            f"""UPDATE missed_calls
-                SET {sets}
-                WHERE id = (
-                    SELECT id FROM missed_calls
-                    WHERE phone = %s
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                )""",
-            (*kwargs.values(), phone),
-        )
-        conn.commit()
+    conn = sqlite3.connect(DB_PATH)
+    sets = ", ".join(f"{k} = ?" for k in kwargs)
+    conn.execute(
+        f"UPDATE missed_calls SET {sets} WHERE phone = ? ORDER BY created_at DESC LIMIT 1",
+        (*kwargs.values(), phone),
+    )
+    conn.commit()
+    conn.close()
 
 
 def send_immediate_sms(to_phone: str) -> bool:
@@ -287,10 +283,11 @@ def _detect_urgency(text: str) -> str:
 @router.get("/status")
 async def missed_call_status():
     ensure_missed_calls_table()
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT phone, sms_sent, replied, outcome, created_at FROM missed_calls ORDER BY created_at DESC LIMIT 20"
-        ).fetchall()
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT phone, sms_sent, replied, outcome, created_at FROM missed_calls ORDER BY created_at DESC LIMIT 20"
+    ).fetchall()
+    conn.close()
     return {
         "status": "ok",
         "recent_missed_calls": [

@@ -6,6 +6,7 @@ Fires acknowledgment SMS in < 5 seconds. Booking link delivered in < 60 seconds.
 
 import os
 import asyncio
+import sqlite3
 from datetime import datetime
 from typing import Optional
 
@@ -14,14 +15,13 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from db.postgres import get_conn
-
 load_dotenv()
 
 router = APIRouter()
 
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 BUSINESS_PHONE = os.getenv("BUSINESS_PHONE", "")
+DB_PATH = os.getenv("SQLITE_DB_PATH", "memory/hvac_leads.db")
 
 ACK_SMS = (
     "Hi {name}! {business} here. "
@@ -141,39 +141,34 @@ async def _run_full_pipeline(lead: dict):
 
 
 def _log_lead_intake(phone: str, name: str, source: str):
-    with get_conn() as conn:
-        conn.execute("""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS lead_timing (
-            id BIGSERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             phone TEXT,
             name TEXT,
             source TEXT,
-            intake_at TIMESTAMPTZ DEFAULT NOW(),
+            intake_at TEXT DEFAULT (datetime('now')),
             pipeline_sec REAL,
             ack_sent INTEGER DEFAULT 1
         )
     """)
-        conn.execute(
-            "INSERT INTO lead_timing (phone, name, source) VALUES (%s, %s, %s)",
-            (phone, name, source),
-        )
-        conn.commit()
+    conn.execute(
+        "INSERT INTO lead_timing (phone, name, source) VALUES (?, ?, ?)",
+        (phone, name, source),
+    )
+    conn.commit()
+    conn.close()
 
 
 def _update_lead_timing(phone: str, elapsed_sec: float):
-    with get_conn() as conn:
-        conn.execute(
-            """UPDATE lead_timing
-               SET pipeline_sec = %s
-               WHERE id = (
-                   SELECT id FROM lead_timing
-                   WHERE phone = %s
-                   ORDER BY intake_at DESC
-                   LIMIT 1
-               )""",
-            (elapsed_sec, phone),
-        )
-        conn.commit()
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "UPDATE lead_timing SET pipeline_sec = ? WHERE phone = ? ORDER BY intake_at DESC LIMIT 1",
+        (elapsed_sec, phone),
+    )
+    conn.commit()
+    conn.close()
 
 
 @router.post("/web-form")
@@ -313,16 +308,17 @@ async def _fetch_and_process_facebook_lead(leadgen_id: str):
 @router.get("/queue-status")
 async def queue_status():
     try:
-        with get_conn() as conn:
-            rows = conn.execute(
-                """SELECT source, COUNT(*) as count,
-                          AVG(pipeline_sec) as avg_sec,
-                          MIN(pipeline_sec) as min_sec,
-                          MAX(pipeline_sec) as max_sec
-                   FROM lead_timing
-                   WHERE intake_at > NOW() - INTERVAL '7 days'
-                   GROUP BY source"""
-            ).fetchall()
+        conn = sqlite3.connect(DB_PATH)
+        rows = conn.execute(
+            """SELECT source, COUNT(*) as count,
+                      AVG(pipeline_sec) as avg_sec,
+                      MIN(pipeline_sec) as min_sec,
+                      MAX(pipeline_sec) as max_sec
+               FROM lead_timing
+               WHERE intake_at > datetime('now', '-7 days')
+               GROUP BY source"""
+        ).fetchall()
+        conn.close()
         return {
             "status": "ok",
             "sources": [
