@@ -30,7 +30,7 @@ BASE_URL = f"https://{RAILWAY_URL}" if RAILWAY_URL else "http://localhost:8000"
 
 st.set_page_config(
     page_title=f"{BUSINESS_NAME} - AI Command Center",
-    page_icon="❄",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
