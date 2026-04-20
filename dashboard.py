@@ -1,14 +1,6 @@
-﻿"""AAA HVAC multi-client Streamlit dashboard.
+"""AAA HVAC multi-client Streamlit dashboard.
 
 Run: streamlit run dashboard.py
-
-Fixes applied:
-  - Dynamic Railway/localhost URL detection
-  - bcrypt password hashing (secure)
-  - ensure_schema() runs once via st.cache_resource
-  - ALTER TABLE constraints wrapped in try/except (PostgreSQL compat)
-  - Calendar/Appointments page added
-  - Integration status shows live Railway URL
 """
 
 import hashlib
@@ -32,13 +24,13 @@ BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 ADMIN_USER = os.getenv("DASHBOARD_ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("DASHBOARD_ADMIN_PASS", "")
 
-# â”€â”€ Dynamic base URL (Railway vs local) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Dynamic base URL (Railway vs local) --
 RAILWAY_URL = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
 BASE_URL = f"https://{RAILWAY_URL}" if RAILWAY_URL else "http://localhost:8000"
 
 st.set_page_config(
     page_title=f"{BUSINESS_NAME} - AI Command Center",
-    page_icon="â„ï¸",
+    page_icon="❄",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -73,7 +65,7 @@ st.markdown(
 )
 
 
-# â”€â”€ Password helpers (bcrypt) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Password helpers (bcrypt) --
 
 def hash_password(password: str) -> str:
     """Return bcrypt hash. Falls back to SHA-256 for legacy rows."""
@@ -85,14 +77,13 @@ def verify_password(password: str, stored_hash: str) -> bool:
     try:
         if stored_hash.startswith("$2b$") or stored_hash.startswith("$2a$"):
             return bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8"))
-        # Legacy SHA-256 fallback
         legacy = hashlib.sha256(password.encode("utf-8")).hexdigest()
         return hmac.compare_digest(legacy, stored_hash)
     except Exception:
         return False
 
 
-# â”€â”€ DB helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- DB helpers --
 
 def query_df(sql: str, params=()) -> pd.DataFrame:
     try:
@@ -115,11 +106,10 @@ def execute(sql: str, params=()) -> bool:
         return False
 
 
-# â”€â”€ Schema â€” cached so it only runs ONCE per app startup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Schema - cached so it only runs ONCE per app startup --
 
 @st.cache_resource(show_spinner=False)
 def ensure_schema():
-    """Create tables and add columns idempotently. Runs once per process."""
     execute(
         """
         CREATE TABLE IF NOT EXISTS clients (
@@ -135,7 +125,6 @@ def ensure_schema():
     execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS client_id INTEGER")
     execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS client_id INTEGER")
 
-    # PostgreSQL does NOT support IF NOT EXISTS for constraints â€” use try/except
     for sql in [
         """
         ALTER TABLE leads
@@ -153,9 +142,8 @@ def ensure_schema():
                 conn.execute(sql)
                 conn.commit()
         except Exception:
-            pass  # Constraint already exists â€” safe to ignore
+            pass
 
-    # Appointments table for calendar page
     execute(
         """
         CREATE TABLE IF NOT EXISTS appointments (
@@ -175,7 +163,7 @@ def ensure_schema():
     )
 
 
-# â”€â”€ Scope helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Scope helpers --
 
 def get_client_scope_clause():
     user = st.session_state.get("auth_user")
@@ -243,7 +231,7 @@ def check_status():
     }
 
 
-# â”€â”€ Auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Auth --
 
 def authenticate(username: str, password: str):
     if username == ADMIN_USER and ADMIN_PASS and hmac.compare_digest(password, ADMIN_PASS):
@@ -271,10 +259,10 @@ def authenticate(username: str, password: str):
     return None
 
 
-# â”€â”€ Pages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Pages --
 
 def render_login():
-    st.title(f"ðŸŒ¡ï¸ {BUSINESS_NAME} Dashboard")
+    st.title(f"{BUSINESS_NAME} Dashboard")
     st.caption("Sign in as admin or a client user.")
     with st.form("login_form"):
         username = st.text_input("Username")
@@ -291,7 +279,7 @@ def render_login():
 
 
 def render_manage_clients_page():
-    st.title("ðŸ‘¥ Manage Clients")
+    st.title("Manage Clients")
     with st.form("create_client"):
         st.subheader("Create New Client")
         c1, c2 = st.columns(2)
@@ -313,7 +301,7 @@ def render_manage_clients_page():
                 (company_name.strip(), username.strip(), hash_password(password), phone_number.strip(), active),
             )
             if ok:
-                st.success("âœ… Client created.")
+                st.success("Client created.")
                 st.rerun()
             else:
                 st.error("Could not create client (username may already exist).")
@@ -329,7 +317,7 @@ def render_manage_clients_page():
     st.dataframe(clients, use_container_width=True, height=300)
     selection = st.selectbox(
         "Select client to update", clients["id"].tolist(),
-        format_func=lambda cid: f"{cid} â€“ {clients[clients['id'] == cid].iloc[0]['company_name']}"
+        format_func=lambda cid: f"{cid} - {clients[clients['id'] == cid].iloc[0]['company_name']}"
     )
     selected = clients[clients["id"] == selection].iloc[0]
     new_status = st.checkbox("Client Active", value=bool(selected["active"]))
@@ -343,7 +331,7 @@ def render_manage_clients_page():
 
 
 def render_pipeline_page():
-    st.title("ðŸ“Š Live Pipeline")
+    st.title("Live Pipeline")
     stats = get_stats()
 
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -396,7 +384,7 @@ def render_pipeline_page():
 
 
 def render_leads_page():
-    st.title("ðŸ“‹ Lead Database")
+    st.title("Lead Database")
     df = get_leads(500)
     if df.empty:
         st.info("No leads in database.")
@@ -438,11 +426,10 @@ def render_leads_page():
 
 
 def render_calendar_page():
-    st.title("ðŸ“… Appointments & Calendar")
+    st.title("Appointments & Calendar")
 
     df = get_appointments(200)
 
-    # â”€â”€ Summary metrics â”€â”€
     c1, c2, c3, c4 = st.columns(4)
     total_appts = len(df)
     scheduled = int((df["status"] == "scheduled").sum()) if not df.empty else 0
@@ -468,7 +455,6 @@ def render_calendar_page():
         st.info("No appointments yet. They will appear here once leads book via Calendly.")
         return
 
-    # â”€â”€ Filters â”€â”€
     col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1:
         search = st.text_input("Search name/phone", "")
@@ -496,7 +482,6 @@ def render_calendar_page():
 
     st.dataframe(filtered[show_cols], use_container_width=True, height=460)
 
-    # â”€â”€ Update appointment status â”€â”€
     st.markdown("---")
     st.subheader("Update Appointment Status")
     if not filtered.empty:
@@ -504,7 +489,7 @@ def render_calendar_page():
         selected_id = st.selectbox(
             "Select Appointment",
             appt_options,
-            format_func=lambda i: f"#{i} â€“ {filtered[filtered['id'] == i].iloc[0]['lead_name']} ({filtered[filtered['id'] == i].iloc[0]['scheduled_at']})"
+            format_func=lambda i: f"#{i} - {filtered[filtered['id'] == i].iloc[0]['lead_name']} ({filtered[filtered['id'] == i].iloc[0]['scheduled_at']})"
         )
         new_status = st.selectbox("New Status", ["scheduled", "completed", "cancelled", "no_show"])
         notes_input = st.text_area("Notes (optional)")
@@ -514,12 +499,11 @@ def render_calendar_page():
                 (new_status, notes_input, int(selected_id))
             )
             if ok:
-                st.success("âœ… Appointment updated.")
+                st.success("Appointment updated.")
                 st.rerun()
             else:
                 st.error("Failed to update appointment.")
 
-    # â”€â”€ Upcoming this week â”€â”€
     st.markdown("---")
     st.subheader("Upcoming This Week")
     upcoming = query_df(
@@ -539,7 +523,7 @@ def render_calendar_page():
 
 
 def render_voice_calls_page():
-    st.title("ðŸ“ž Voice AI â€” Vapi.ai Call Log")
+    st.title("Voice AI - Vapi.ai Call Log")
     df_calls = get_voice_calls(50)
     if df_calls.empty:
         st.info("No voice calls logged yet.")
@@ -558,9 +542,8 @@ def render_voice_calls_page():
 
 
 def render_system_status_page():
-    st.title("âš™ï¸ Integration Status")
+    st.title("Integration Status")
 
-    # â”€â”€ Live URL (dynamic) â”€â”€
     st.subheader("Live Server URL")
     st.code(BASE_URL)
 
@@ -570,11 +553,11 @@ def render_system_status_page():
     for col, section in [(col_a, items[:4]), (col_b, items[4:])]:
         with col:
             for service, ok in section:
-                icon = "âœ…" if ok else "âŒ"
+                icon = "[OK]" if ok else "[X]"
                 label = "OK" if ok else "MISSING"
                 css = "status-ok" if ok else "status-bad"
                 st.markdown(
-                    f'{icon} <span class="{css}">{label}</span> â€” {service}',
+                    f'{icon} <span class="{css}">{label}</span> - {service}',
                     unsafe_allow_html=True,
                 )
 
@@ -596,7 +579,7 @@ POST {BASE_URL}/vapi/outbound
 
 
 def render_inject_lead_page():
-    st.title("ðŸ§ª Inject a Test Lead")
+    st.title("Inject a Test Lead")
     st.caption("Push a lead directly into the agent pipeline without a real phone call.")
 
     with st.form("inject_form"):
@@ -656,16 +639,13 @@ def render_inject_lead_page():
             st.error(f"Agent error: {exc}")
 
 
-# â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-
-# â”€â”€ Lead Finder Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Lead Finder Page --
 
 def render_lead_finder_page():
-    st.title("ðŸ” Lead Finder")
+    st.title("Lead Finder")
     st.caption("Find HVAC businesses in any zip code and add them to your outreach pipeline.")
 
-    tab1, tab2 = st.tabs(["ðŸ”Ž Search Businesses", "ðŸ“‹ My Prospects"])
+    tab1, tab2 = st.tabs(["Search Businesses", "My Prospects"])
 
     with tab1:
         st.subheader("Search HVAC Businesses by Zip Code")
@@ -677,13 +657,13 @@ def render_lead_finder_page():
         with col3:
             max_results = st.selectbox("Max Results", [10, 20, 50])
 
-        search_clicked = st.button("ðŸ” Search", type="primary")
+        search_clicked = st.button("Search", type="primary")
 
         if search_clicked and zip_code:
             api_key = os.getenv("GOOGLE_PLACES_API_KEY", "")
             if not api_key:
-                st.warning("âš ï¸ Google Places API key missing.")
-                st.info("**Demo mode** â€” showing sample data")
+                st.warning("Google Places API key missing.")
+                st.info("Demo mode - showing sample data")
                 _show_demo_results(zip_code)
             else:
                 with st.spinner(f"Searching near {zip_code}..."):
@@ -751,11 +731,11 @@ def render_lead_finder_page():
                     (new_status, notes, int(prospect_id))
                 )
                 if ok:
-                    st.success("âœ… Updated.")
+                    st.success("Updated.")
                     st.rerun()
 
         csv = filtered_p.to_csv(index=False)
-        st.download_button("ðŸ“¥ Export CSV", csv, "prospects.csv", "text/csv")
+        st.download_button("Export CSV", csv, "prospects.csv", "text/csv")
 
 
 def _search_hvac_businesses(zip_code: str, api_key: str, max_results: int) -> list:
@@ -812,18 +792,18 @@ def _display_search_results(results: list):
     for i, biz in enumerate(results):
         rating = biz.get("rating", 0)
         reviews = biz.get("review_count", 0)
-        pain = "ðŸ”¥ High" if rating < 4.0 else "ðŸŸ¡ Medium" if rating < 4.5 else "ðŸŸ¢ Low"
-        with st.expander(f"**{biz['name']}** â€” â­{rating} ({reviews} reviews) â€” Opportunity: {pain}"):
+        pain = "High opportunity" if rating < 4.0 else "Medium opportunity" if rating < 4.5 else "Low opportunity"
+        with st.expander(f"**{biz['name']}** - {rating}/5 ({reviews} reviews) - {pain}"):
             col1, col2 = st.columns(2)
             with col1:
-                st.write(f"ðŸ“ {biz['address']}")
-                st.write(f"ðŸ“ž {biz['phone'] or 'N/A'}")
-                st.write(f"ðŸŒ {biz['website'] or 'N/A'}")
+                st.write(f"Address: {biz['address']}")
+                st.write(f"Phone: {biz['phone'] or 'N/A'}")
+                st.write(f"Website: {biz['website'] or 'N/A'}")
             with col2:
-                st.write(f"â­ {rating}/5 â€” {reviews} reviews")
+                st.write(f"Rating: {rating}/5 - {reviews} reviews")
                 if rating < 4.0:
-                    st.markdown("ðŸ”¥ **Good prospect!**")
-            if st.button("âž• Add to Prospects", key=f"add_{i}"):
+                    st.markdown("**Good prospect!**")
+            if st.button("Add to Prospects", key=f"add_{i}"):
                 _add_to_prospects(biz)
 
 
@@ -855,7 +835,7 @@ def _add_to_prospects(biz: dict):
          biz["website"], biz["place_id"])
     )
     if ok:
-        st.success(f"âœ… {biz['name']} added!")
+        st.success(f"{biz['name']} added!")
     else:
         st.info("Already in list.")
 
@@ -869,218 +849,12 @@ def _show_demo_results(zip_code: str):
         {"name": "Metro HVAC Services", "address": f"654 Queens Blvd, {zip_code}", "rating": 3.9, "review_count": 34, "phone": "347-555-0005", "website": "", "place_id": "demo5"},
     ]
     _display_search_results(demo_data)
-# â”€â”€ Lead Finder Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-def render_lead_finder_page():
-    st.title("ðŸ” Lead Finder")
-    st.caption("Find HVAC businesses in any zip code and add them to your outreach pipeline.")
-
-    tab1, tab2 = st.tabs(["ðŸ”Ž Search Businesses", "ðŸ“‹ My Prospects"])
-
-    with tab1:
-        st.subheader("Search HVAC Businesses by Zip Code")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            zip_code = st.text_input("Zip Code", placeholder="e.g. 11501")
-        with col2:
-            radius = st.selectbox("Radius", ["5 miles", "10 miles", "25 miles"])
-        with col3:
-            max_results = st.selectbox("Max Results", [10, 20, 50])
-
-        search_clicked = st.button("ðŸ” Search", type="primary")
-
-        if search_clicked and zip_code:
-            api_key = os.getenv("GOOGLE_PLACES_API_KEY", "")
-            if not api_key:
-                st.warning("âš ï¸ Google Places API key missing.")
-                st.info("**Demo mode** â€” showing sample data")
-                _show_demo_results(zip_code)
-            else:
-                with st.spinner(f"Searching near {zip_code}..."):
-                    results = _search_hvac_businesses(zip_code, api_key, max_results)
-                if results:
-                    _display_search_results(results)
-                else:
-                    st.info("No results found.")
-        elif search_clicked:
-            st.error("Please enter a zip code.")
-
-    with tab2:
-        st.subheader("My Prospect List")
-        prospects = query_df(
-            "SELECT * FROM lead_finder_prospects ORDER BY created_at DESC LIMIT 200"
-        )
-        if prospects.empty:
-            st.info("No prospects yet.")
-            return
-
-        c1, c2, c3, c4 = st.columns(4)
-        total_p = len(prospects)
-        contacted = int((prospects["status"] == "contacted").sum()) if "status" in prospects.columns else 0
-        interested = int((prospects["status"] == "interested").sum()) if "status" in prospects.columns else 0
-        closed = int((prospects["status"] == "closed").sum()) if "status" in prospects.columns else 0
-
-        for col, label, val, color in [
-            (c1, "Total", total_p, "#1a7fd4"),
-            (c2, "Contacted", contacted, "#f59e0b"),
-            (c3, "Interested", interested, "#00d4aa"),
-            (c4, "Closed", closed, "#a855f7"),
-        ]:
-            with col:
-                st.markdown(
-                    f'<div class="metric-card"><div class="metric-label">{label}</div>'
-                    f'<div class="metric-value" style="color:{color}">{val}</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("---")
-        status_filter = st.selectbox("Filter", ["All", "new", "contacted", "interested", "not_interested", "closed"])
-        filtered_p = prospects if status_filter == "All" else prospects[prospects["status"] == status_filter]
-        st.dataframe(
-            filtered_p[["company_name", "phone", "address", "rating", "review_count", "status", "notes", "created_at"]],
-            use_container_width=True,
-            height=400
-        )
-
-        st.markdown("---")
-        st.subheader("Update Prospect")
-        if not filtered_p.empty:
-            prospect_id = st.selectbox(
-                "Select",
-                filtered_p["id"].tolist(),
-                format_func=lambda i: f"{filtered_p[filtered_p['id']==i].iloc[0]['company_name']}"
-            )
-            col_s1, col_s2 = st.columns(2)
-            with col_s1:
-                new_status = st.selectbox("Status", ["new", "contacted", "interested", "not_interested", "closed"])
-            with col_s2:
-                notes = st.text_input("Notes")
-            if st.button("Update"):
-                ok = execute(
-                    "UPDATE lead_finder_prospects SET status=%s, notes=%s WHERE id=%s",
-                    (new_status, notes, int(prospect_id))
-                )
-                if ok:
-                    st.success("âœ… Updated.")
-                    st.rerun()
-
-        csv = filtered_p.to_csv(index=False)
-        st.download_button("ðŸ“¥ Export CSV", csv, "prospects.csv", "text/csv")
 
 
-def _search_hvac_businesses(zip_code: str, api_key: str, max_results: int) -> list:
-    import urllib.request
-    import json
-    try:
-        geo_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={zip_code}&key={api_key}"
-        with urllib.request.urlopen(geo_url) as resp:
-            geo_data = json.loads(resp.read())
-        if not geo_data.get("results"):
-            return []
-        location = geo_data["results"][0]["geometry"]["location"]
-        lat, lng = location["lat"], location["lng"]
-        places_url = (
-            f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-            f"?location={lat},{lng}&radius=16000&keyword=HVAC+contractor&key={api_key}"
-        )
-        with urllib.request.urlopen(places_url) as resp:
-            places_data = json.loads(resp.read())
-        results = []
-        for place in places_data.get("results", [])[:max_results]:
-            place_id = place.get("place_id", "")
-            phone = ""
-            website = ""
-            if place_id:
-                details_url = (
-                    f"https://maps.googleapis.com/maps/api/place/details/json"
-                    f"?place_id={place_id}&fields=formatted_phone_number,website&key={api_key}"
-                )
-                try:
-                    with urllib.request.urlopen(details_url) as dresp:
-                        details = json.loads(dresp.read())
-                    phone = details.get("result", {}).get("formatted_phone_number", "")
-                    website = details.get("result", {}).get("website", "")
-                except Exception:
-                    pass
-            results.append({
-                "name": place.get("name", ""),
-                "address": place.get("vicinity", ""),
-                "rating": place.get("rating", 0),
-                "review_count": place.get("user_ratings_total", 0),
-                "phone": phone,
-                "website": website,
-                "place_id": place_id,
-            })
-        return results
-    except Exception as exc:
-        st.error(f"Search error: {exc}")
-        return []
+# -- Main --
 
-
-def _display_search_results(results: list):
-    st.success(f"Found {len(results)} HVAC businesses!")
-    for i, biz in enumerate(results):
-        rating = biz.get("rating", 0)
-        reviews = biz.get("review_count", 0)
-        pain = "ðŸ”¥ High" if rating < 4.0 else "ðŸŸ¡ Medium" if rating < 4.5 else "ðŸŸ¢ Low"
-        with st.expander(f"**{biz['name']}** â€” â­{rating} ({reviews} reviews) â€” Opportunity: {pain}"):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"ðŸ“ {biz['address']}")
-                st.write(f"ðŸ“ž {biz['phone'] or 'N/A'}")
-                st.write(f"ðŸŒ {biz['website'] or 'N/A'}")
-            with col2:
-                st.write(f"â­ {rating}/5 â€” {reviews} reviews")
-                if rating < 4.0:
-                    st.markdown("ðŸ”¥ **Good prospect!**")
-            if st.button("âž• Add to Prospects", key=f"add_{i}"):
-                _add_to_prospects(biz)
-
-
-def _add_to_prospects(biz: dict):
-    execute("""
-        CREATE TABLE IF NOT EXISTS lead_finder_prospects (
-            id SERIAL PRIMARY KEY,
-            company_name TEXT,
-            phone TEXT,
-            address TEXT,
-            rating FLOAT,
-            review_count INTEGER,
-            website TEXT,
-            place_id TEXT UNIQUE,
-            status TEXT DEFAULT 'new',
-            notes TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-        )
-    """)
-    ok = execute(
-        """
-        INSERT INTO lead_finder_prospects
-            (company_name, phone, address, rating, review_count, website, place_id)
-        VALUES (%s,%s,%s,%s,%s,%s,%s)
-        ON CONFLICT (place_id) DO NOTHING
-        """,
-        (biz["name"], biz["phone"], biz["address"],
-         biz["rating"], biz["review_count"],
-         biz["website"], biz["place_id"])
-    )
-    if ok:
-        st.success(f"âœ… {biz['name']} added!")
-    else:
-        st.info("Already in list.")
-
-
-def _show_demo_results(zip_code: str):
-    demo_data = [
-        {"name": "Long Island HVAC Pro", "address": f"123 Main St, {zip_code}", "rating": 3.8, "review_count": 47, "phone": "516-555-0001", "website": "", "place_id": "demo1"},
-        {"name": "Queens Air Systems", "address": f"456 Broadway, {zip_code}", "rating": 4.1, "review_count": 23, "phone": "718-555-0002", "website": "", "place_id": "demo2"},
-        {"name": "NYC Cool Air LLC", "address": f"789 Park Ave, {zip_code}", "rating": 3.5, "review_count": 12, "phone": "212-555-0003", "website": "", "place_id": "demo3"},
-        {"name": "Island Comfort HVAC", "address": f"321 Ocean Blvd, {zip_code}", "rating": 4.4, "review_count": 89, "phone": "631-555-0004", "website": "", "place_id": "demo4"},
-        {"name": "Metro HVAC Services", "address": f"654 Queens Blvd, {zip_code}", "rating": 3.9, "review_count": 34, "phone": "347-555-0005", "website": "", "place_id": "demo5"},
-    ]
-    _display_search_results(demo_data)
 def main():
-    ensure_schema()  # Runs once per process (cached)
+    ensure_schema()
 
     if "auth_user" not in st.session_state:
         st.session_state["auth_user"] = None
@@ -1091,7 +865,7 @@ def main():
 
     auth_user = st.session_state["auth_user"]
     with st.sidebar:
-        st.markdown(f"## â„ï¸ {BUSINESS_NAME}")
+        st.markdown(f"## {BUSINESS_NAME}")
         st.markdown(f"**Signed in:** `{auth_user['username']}` ({auth_user['role']})")
         if auth_user["role"] == "client":
             st.caption(auth_user["company_name"])
@@ -1102,9 +876,9 @@ def main():
 
         page = st.radio("Navigation", pages)
         st.markdown("---")
-        if st.button("ðŸ”„ Refresh"):
+        if st.button("Refresh"):
             st.rerun()
-        if st.button("ðŸšª Logout"):
+        if st.button("Logout"):
             st.session_state["auth_user"] = None
             st.rerun()
 
@@ -1115,6 +889,7 @@ def main():
         "Appointments": render_calendar_page,
         "Voice Calls": render_voice_calls_page,
         "Lead Finder": render_lead_finder_page,
+        "System Status": render_system_status_page,
         "Inject Lead": render_inject_lead_page,
     }
     dispatch.get(page, render_pipeline_page)()
@@ -1122,6 +897,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # â”€â”€ Main â”€â”€
-
-
