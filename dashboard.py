@@ -1,4 +1,4 @@
-"""AAA HVAC multi-client Streamlit dashboard.
+﻿"""AAA HVAC multi-client Streamlit dashboard.
 
 Run: streamlit run dashboard.py
 """
@@ -59,6 +59,7 @@ st.markdown(
   }
   .status-ok  { color: #00d4aa; font-weight: 600; }
   .status-bad { color: #f87171; font-weight: 600; }
+div[data-testid="stSidebar"] p {color: #ffffff !important;}
 </style>
 """,
     unsafe_allow_html=True,
@@ -858,6 +859,8 @@ def main():
 
     if "auth_user" not in st.session_state:
         st.session_state["auth_user"] = None
+    if "current_page" not in st.session_state:
+        st.session_state["current_page"] = "Pipeline"
 
     if not st.session_state["auth_user"]:
         render_login()
@@ -874,12 +877,22 @@ def main():
         if auth_user["role"] == "admin":
             pages.insert(0, "Manage Clients")
 
-        page = st.radio("Navigation", pages)
+        if st.session_state["current_page"] not in pages:
+            st.session_state["current_page"] = pages[0]
+
+        st.markdown("### Navigation")
+        for page_name in pages:
+            button_label = f"{'->' if st.session_state['current_page'] == page_name else '  '} {page_name}"
+            if st.button(button_label, key=f"nav_btn_{page_name}"):
+                st.session_state["current_page"] = page_name
+
+        page = st.session_state["current_page"]
         st.markdown("---")
         if st.button("Refresh"):
             st.rerun()
         if st.button("Logout"):
             st.session_state["auth_user"] = None
+            st.session_state["current_page"] = "Pipeline"
             st.rerun()
 
     dispatch = {
