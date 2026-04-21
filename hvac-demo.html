@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AAA HVAC AI | Smarter Comfort Starts Here</title>
+  <meta
+    name="description"
+    content="AAA HVAC AI helps contractors automate lead response, booking, and customer communication with intelligent voice and chat agents."
+  />
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-soft: #121a31;
+      --panel: #17213d;
+      --text: #eaf0ff;
+      --muted: #aeb8d8;
+      --primary: #4da3ff;
+      --primary-strong: #2c87eb;
+      --accent: #51d6c0;
+      --ring: rgba(77, 163, 255, 0.45);
+      --shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+      --radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Roboto, Arial, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 15% 10%, #1b2c57, var(--bg) 55%);
+      line-height: 1.5;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .container {
+      width: min(1120px, 92vw);
+      margin: 0 auto;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+      background: rgba(11, 16, 32, 0.75);
+      border-bottom: 1px solid rgba(174, 184, 216, 0.15);
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .logo {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      display: grid;
+      place-items: center;
+      color: #061126;
+      font-weight: 900;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 20px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .cta-btn {
+      border: 0;
+      background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(44, 135, 235, 0.35);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .cta-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(44, 135, 235, 0.45);
+    }
+
+    .hero {
+      padding: 76px 0 54px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 34px;
+      align-items: center;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #d4e5ff;
+      background: rgba(77, 163, 255, 0.16);
+      border: 1px solid rgba(77, 163, 255, 0.34);
+      padding: 7px 11px;
+      border-radius: 999px;
+      font-size: 0.86rem;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 3.8vw, 3.3rem);
+      line-height: 1.12;
+      margin: 0 0 15px;
+    }
+
+    .hero p {
+      margin: 0 0 26px;
+      color: var(--muted);
+      max-width: 58ch;
+      font-size: 1.03rem;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .ghost-btn {
+      background: transparent;
+      color: #d7e7ff;
+      border: 1px solid rgba(174, 184, 216, 0.35);
+      padding: 10px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(23, 33, 61, 0.95), rgba(15, 23, 44, 0.95));
+      border: 1px solid rgba(174, 184, 216, 0.2);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+
+    .hero-card h3 {
+      margin: 0 0 10px;
+      font-size: 1.1rem;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .metric {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(174, 184, 216, 0.18);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .metric b {
+      display: block;
+      font-size: 1.35rem;
+      margin-bottom: 3px;
+    }
+
+    .section {
+      padding: 42px 0;
+    }
+
+    .section h2 {
+      margin: 0 0 10px;
+      font-size: clamp(1.5rem, 2.4vw, 2.1rem);
+    }
+
+    .section-subtitle {
+      margin: 0;
+      color: var(--muted);
+      max-width: 70ch;
+    }
+
+    .feature-grid {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .feature h3 {
+      margin: 2px 0 8px;
+      font-size: 1.03rem;
+    }
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .feature .icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(77, 163, 255, 0.18);
+      border: 1px solid rgba(77, 163, 255, 0.35);
+      display: grid;
+      place-items: center;
+      margin-bottom: 10px;
+      font-size: 1.1rem;
+    }
+
+    .process {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .step {
+      position: relative;
+      padding: 20px;
+    }
+
+    .step-num {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      font-size: 0.86rem;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .step h3 {
+      margin: 4px 0 6px;
+      font-size: 1.02rem;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .testimonial {
+      margin-top: 22px;
+      font-style: italic;
+      color: #d5ddf7;
+      border-left: 3px solid var(--accent);
+      padding-left: 14px;
+    }
+
+    .final-cta {
+      margin: 48px 0 68px;
+      padding: 28px;
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, rgba(77, 163, 255, 0.2), rgba(81, 214, 192, 0.16));
+      border: 1px solid rgba(174, 184, 216, 0.28);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    footer {
+      padding: 18px 0 34px;
+      border-top: 1px solid rgba(174, 184, 216, 0.15);
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 960px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+      .feature-grid,
+      .process {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .nav-links {
+        display: none;
+      }
+      .feature-grid,
+      .process,
+      .metric-grid {
+        grid-template-columns: 1fr;
+      }
+      .final-cta {
+        margin-bottom: 50px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <a class="brand" href="#">
+        <span class="logo">A</span>
+        <span>AAA HVAC AI</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#results">Results</a>
+      </nav>
+      <button class="cta-btn">Book a Demo</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div>
+        <span class="tag">AI-Powered HVAC Growth Platform</span>
+        <h1>Turn missed calls into booked jobs with HVAC AI automation.</h1>
+        <p>
+          AAA HVAC AI helps your team answer faster, qualify better, and schedule more profitable
+          service calls using intelligent voice and chat assistants that work 24/7.
+        </p>
+        <div class="hero-actions">
+          <button class="cta-btn">Start Free Strategy Call</button>
+          <button class="ghost-btn">View Product Tour</button>
+        </div>
+      </div>
+
+      <aside class="card hero-card" aria-label="Performance snapshot">
+        <h3>Performance Snapshot</h3>
+        <p style="margin: 0; color: var(--muted);">
+          Teams using AAA HVAC AI report measurable efficiency gains in under 30 days.
+        </p>
+        <div class="metric-grid">
+          <div class="metric">
+            <b>+38%</b>
+            <span>More booked appointments</span>
+          </div>
+          <div class="metric">
+            <b>24/7</b>
+            <span>Lead capture coverage</span>
+          </div>
+          <div class="metric">
+            <b>-42%</b>
+            <span>Response time reduction</span>
+          </div>
+          <div class="metric">
+            <b>2.3x</b>
+            <span>Faster dispatch decisions</span>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="section" id="features">
+      <h2>Built for modern HVAC operators</h2>
+      <p class="section-subtitle">
+        Replace manual follow-up and inconsistent intake with AI workflows designed for HVAC
+        service teams, dispatchers, and growth-focused owners.
+      </p>
+      <div class="feature-grid">
+        <article class="card feature">
+          <div class="icon">📞</div>
+          <h3>Voice AI Reception</h3>
+          <p>
+            Handle inbound calls automatically, capture job details, and escalate urgent requests
+            in real time.
+          </p>
+        </article>
+        <article class="card feature">
+          <div class="icon">🤖</div>
+          <h3>Smart Lead Qualification</h3>
+          <p>
+            Instantly score new leads by service type, location, urgency, and homeowner readiness.
+          </p>
+        </article>
+        <article class="card feature">
+          <div class="icon">📅</div>
+          <h3>Automated Booking</h3>
+          <p>
+            Sync with calendars and send confirmations so your dispatch board stays full and accurate.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="how-it-works">
+      <h2>How it works</h2>
+      <p class="section-subtitle">
+        Launch quickly without changing your entire workflow. We integrate with your existing stack.
+      </p>
+      <div class="process">
+        <article class="card step">
+          <span class="step-num">Step 1</span>
+          <h3>Connect your channels</h3>
+          <p>Link phone, forms, and chat sources so every incoming lead routes into one pipeline.</p>
+        </article>
+        <article class="card step">
+          <span class="step-num">Step 2</span>
+          <h3>Train your AI assistant</h3>
+          <p>Configure scripts, service rules, and availability tailored to your HVAC business.</p>
+        </article>
+        <article class="card step">
+          <span class="step-num">Step 3</span>
+          <h3>Scale with insight</h3>
+          <p>Track conversion and response metrics through a live dashboard to optimize outcomes.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="results">
+      <h2>Trusted by service teams focused on growth</h2>
+      <p class="section-subtitle">
+        From family-run contractors to regional providers, teams use AAA HVAC AI to improve
+        customer experience while lowering operational overhead.
+      </p>
+      <blockquote class="testimonial">
+        "Our missed-call problem basically disappeared in two weeks. The AI answers, qualifies, and
+        books while our techs stay focused in the field."
+      </blockquote>
+    </section>
+
+    <section class="final-cta">
+      <div>
+        <h2 style="margin: 0 0 6px;">Ready to modernize your HVAC customer journey?</h2>
+        <p style="margin: 0; color: var(--muted);">
+          Schedule a personalized walkthrough and see how AAA HVAC AI fits your operation.
+        </p>
+      </div>
+      <button class="cta-btn">Request Your Demo</button>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      &copy; <span id="year"></span> AAA HVAC AI. Built for high-performance service businesses.
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
