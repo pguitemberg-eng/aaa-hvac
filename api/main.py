@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 load_dotenv()
 
@@ -115,6 +116,38 @@ app.include_router(booking_router,     prefix="/booking",    tags=["Booking"])
 app.include_router(speed_router,       prefix="/lead",       tags=["Speed To Lead"])
 app.include_router(vapi_router,        prefix="/vapi",        tags=["Voice AI"])
 app.include_router(onboarding_router,  prefix="/onboarding", tags=["Onboarding"])
+
+
+@app.get("/privacy-policy", response_class=HTMLResponse, tags=["Legal"])
+async def privacy_policy():
+    return """
+    <html>
+        <head><title>Privacy Policy - Globiz LLC (Midvio)</title></head>
+        <body>
+            <h1>Privacy Policy for SMS Messaging</h1>
+            <p><strong>Company:</strong> Globiz LLC (Midvio)</p>
+            <p><strong>Contact:</strong> support@midvio.com</p>
+            <p><strong>SMS opt-out:</strong> Reply STOP to unsubscribe</p>
+            <p><strong>Last updated:</strong> April 24, 2026</p>
+        </body>
+    </html>
+    """
+
+
+@app.get("/terms", response_class=HTMLResponse, tags=["Legal"])
+async def terms():
+    return """
+    <html>
+        <head><title>Terms of Service - Globiz LLC (Midvio)</title></head>
+        <body>
+            <h1>Terms of Service for SMS Messaging</h1>
+            <p><strong>Company:</strong> Globiz LLC (Midvio)</p>
+            <p><strong>Contact:</strong> support@midvio.com</p>
+            <p><strong>SMS opt-out:</strong> Reply STOP to unsubscribe</p>
+            <p><strong>Last updated:</strong> April 24, 2026</p>
+        </body>
+    </html>
+    """
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
