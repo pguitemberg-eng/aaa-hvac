@@ -70,10 +70,18 @@ def log_missed_call(phone: str, call_sid: str) -> int:
 
 def update_missed_call(phone: str, **kwargs):
     conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT id FROM missed_calls WHERE phone = ? ORDER BY created_at DESC LIMIT 1",
+        (phone,),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return
+
     sets = ", ".join(f"{k} = ?" for k in kwargs)
     conn.execute(
-        f"UPDATE missed_calls SET {sets} WHERE phone = ? ORDER BY created_at DESC LIMIT 1",
-        (*kwargs.values(), phone),
+        f"UPDATE missed_calls SET {sets} WHERE id = ?",
+        (*kwargs.values(), row[0]),
     )
     conn.commit()
     conn.close()

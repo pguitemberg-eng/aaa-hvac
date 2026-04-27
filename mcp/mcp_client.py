@@ -3,9 +3,9 @@ mcp/mcp_client.py
 Reusable wrapper for all MCP server calls via Anthropic API.
 """
 
-import os
 import anthropic
 from typing import Optional
+from config import get_anthropic_api_key
 
 MCP_SERVERS = {
     "hubspot": "https://mcp.hubspot.com/mcp",
@@ -26,7 +26,7 @@ def call_mcp(
         return None
 
     try:
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        client = anthropic.Anthropic(api_key=get_anthropic_api_key())
 
         response = client.beta.messages.create(
             model="claude-sonnet-4-6",
@@ -74,7 +74,7 @@ def call_mcp_multi(
         return None
 
     try:
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        client = anthropic.Anthropic(api_key=get_anthropic_api_key())
 
         response = client.beta.messages.create(
             model="claude-sonnet-4-6",

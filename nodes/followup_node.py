@@ -13,6 +13,7 @@ from mcp.hubspot_mcp import log_activity
 from mcp.gmail_mcp import send_followup_email
 from tools.twilio_tool import send_sms
 from tools.sendgrid_tool import send_email as sendgrid_email
+from config import get_anthropic_api_key
 
 FOLLOWUP_SYSTEM_PROMPT = """
 You are an HVAC service coordinator writing a follow-up SMS.
@@ -54,7 +55,7 @@ def send_followup(state: dict) -> dict:
 
     llm = ChatAnthropic(
         model="claude-sonnet-4-6",
-        api_key=os.getenv("ANTHROPIC_API_KEY"),
+        api_key=get_anthropic_api_key(),
         temperature=0.5,
         max_tokens=200,
     )

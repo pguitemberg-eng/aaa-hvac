@@ -118,9 +118,9 @@ app.include_router(vapi_router,        prefix="/vapi",        tags=["Voice AI"])
 app.include_router(onboarding_router,  prefix="/onboarding", tags=["Onboarding"])
 
 
-@app.get("/privacy-policy", response_class=HTMLResponse, tags=["Legal"])
+@app.get("/privacy-policy")
 async def privacy_policy():
-    return """
+    return HTMLResponse(content="""
     <html>
         <head><title>Privacy Policy - Globiz LLC (Midvio)</title></head>
         <body>
@@ -131,12 +131,12 @@ async def privacy_policy():
             <p><strong>Last updated:</strong> April 24, 2026</p>
         </body>
     </html>
-    """
+    """)
 
 
-@app.get("/terms", response_class=HTMLResponse, tags=["Legal"])
+@app.get("/terms")
 async def terms():
-    return """
+    return HTMLResponse(content="""
     <html>
         <head><title>Terms of Service - Globiz LLC (Midvio)</title></head>
         <body>
@@ -147,7 +147,7 @@ async def terms():
             <p><strong>Last updated:</strong> April 24, 2026</p>
         </body>
     </html>
-    """
+    """)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

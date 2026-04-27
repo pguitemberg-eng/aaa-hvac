@@ -14,6 +14,7 @@ from mcp.calendar_mcp import check_technician_availability
 from mcp.gmail_mcp import send_booking_email
 from tools.twilio_tool import send_sms
 from tools.sendgrid_tool import send_email as sendgrid_email
+from config import get_anthropic_api_key
 
 BOOK_SYSTEM_PROMPT = """
 You are an HVAC expert writing booking messages for a customer in Long Island, NY.
@@ -77,7 +78,7 @@ def book_lead(state: dict) -> dict:
 
     llm = ChatAnthropic(
         model="claude-sonnet-4-6",
-        api_key=os.getenv("ANTHROPIC_API_KEY"),
+        api_key=get_anthropic_api_key(),
         temperature=0.4,
         max_tokens=600,
     )

@@ -12,6 +12,7 @@ from mcp.hubspot_mcp import update_deal_stage
 from mcp.gmail_mcp import send_team_alert
 from mcp.calendar_mcp import create_job_event
 from tools.twilio_tool import send_sms
+from config import get_anthropic_api_key
 
 TECH_BRIEFING_SYSTEM_PROMPT = """
 You are an HVAC dispatcher creating a technical briefing for a field technician.
@@ -44,7 +45,7 @@ def notify_team(state: dict) -> dict:
     if state.get("booking_confirmed") or outcome == "escalated":
         llm = ChatAnthropic(
             model="claude-sonnet-4-6",
-            api_key=os.getenv("ANTHROPIC_API_KEY"),
+            api_key=get_anthropic_api_key(),
             temperature=0.2,
             max_tokens=400,
         )

@@ -3,13 +3,13 @@ agent/graph.py
 LangGraph pipeline: qualify -> book -> followup -> notify
 """
 
-import os
 from langgraph.graph import StateGraph, END
 from langchain_anthropic import ChatAnthropic
 from typing import TypedDict, Annotated
 from langchain_core.messages import BaseMessage
 import operator
 from dotenv import load_dotenv
+from config import get_anthropic_api_key
 
 load_dotenv()
 
@@ -42,7 +42,7 @@ class HVACState(TypedDict):
 def build_graph():
     llm = ChatAnthropic(
         model="claude-sonnet-4-6",
-        api_key=os.getenv("ANTHROPIC_API_KEY"),
+        api_key=get_anthropic_api_key(),
         temperature=0.3,
         max_tokens=1024,
     )
