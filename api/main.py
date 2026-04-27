@@ -52,6 +52,7 @@ def get_allowed_origins() -> list[str]:
     origins = [
         "http://localhost:8000",
         "http://localhost:8501",  # Streamlit local
+        "https://dashboard.midvio.com",
     ]
     railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
     if railway_domain:
