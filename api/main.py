@@ -24,6 +24,7 @@ load_dotenv()
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from booking.booking_handler import send_appointment_reminders
+from config import get_anthropic_api_key
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -67,6 +68,15 @@ def get_allowed_origins() -> list[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    anthropic_key_loaded = False
+    try:
+        _ = get_anthropic_api_key()
+        anthropic_key_loaded = True
+    except Exception:
+        anthropic_key_loaded = False
+
+    logger.info(f"[MAIN] Anthropic key loaded: {str(anthropic_key_loaded).lower()}")
+
     scheduler.add_listener(scheduler_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
     scheduler.add_job(
         send_appointment_reminders,
