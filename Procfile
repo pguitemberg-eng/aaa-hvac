@@ -1,1 +1,1 @@
-﻿web: streamlit run dashboard.py --server.port $PORT --server.address 0.0.0.0
+﻿web: uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8080}
