@@ -15,8 +15,9 @@ import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -142,6 +143,26 @@ app.include_router(booking_router,     prefix="/booking",    tags=["Booking"])
 app.include_router(speed_router,       prefix="/lead",       tags=["Speed To Lead"])
 app.include_router(vapi_router,        prefix="/vapi",        tags=["Voice AI"])
 app.include_router(onboarding_router,  prefix="/onboarding", tags=["Onboarding"])
+
+
+class DashboardLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/auth/dashboard")
+async def dashboard_login(req: DashboardLoginRequest):
+    """Validate admin credentials against DASHBOARD_ADMIN_USER / DASHBOARD_ADMIN_PASS."""
+    expected_user = os.getenv("DASHBOARD_ADMIN_USER", "")
+    expected_pass = os.getenv("DASHBOARD_ADMIN_PASS", "")
+    if not expected_user or not expected_pass:
+        raise HTTPException(
+            status_code=503,
+            detail="Dashboard authentication is not configured on the server.",
+        )
+    if req.username == expected_user and req.password == expected_pass:
+        return {"ok": True}
+    raise HTTPException(status_code=401, detail="Invalid username or password.")
 
 
 @app.get("/privacy-policy")

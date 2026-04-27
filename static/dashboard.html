@@ -26,6 +26,30 @@
     }
     h1 { margin: 0 0 8px; font-size: 28px; }
     .sub { margin: 0 0 24px; color: var(--muted); }
+    .hidden { display: none !important; }
+    #loginScreen {
+      max-width: 400px;
+      margin: 48px auto;
+    }
+    #loginScreen .card {
+      padding: 24px;
+    }
+    #loginScreen label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    #loginScreen input {
+      width: 100%;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0d1528;
+      color: var(--text);
+      font-size: 15px;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -55,6 +79,16 @@
       color: #fecaca;
       font-size: 13px;
     }
+    .login-error {
+      display: none;
+      margin-bottom: 14px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #5c1e1e;
+      background: #2b1111;
+      color: #fecaca;
+      font-size: 13px;
+    }
     button {
       background: var(--accent);
       color: white;
@@ -64,39 +98,70 @@
       cursor: pointer;
       font-weight: 600;
     }
+    #loginBtn { width: 100%; padding: 12px; font-size: 15px; }
   </style>
 </head>
 <body>
-  <h1>Live Pipeline</h1>
-  <p class="sub">Source: <code>https://api.midvio.com/leads</code></p>
-
-  <div class="grid">
-    <div class="card total">
-      <div class="label">Total Leads</div>
-      <div class="value" id="total">0</div>
-    </div>
-    <div class="card booked">
-      <div class="label">Booked</div>
-      <div class="value" id="booked">0</div>
-    </div>
-    <div class="card escalated">
-      <div class="label">Escalated</div>
-      <div class="value" id="escalated">0</div>
-    </div>
-    <div class="card disqualified">
-      <div class="label">Disqualified</div>
-      <div class="value" id="disqualified">0</div>
+  <div id="loginScreen">
+    <h1>Admin login</h1>
+    <p class="sub">Sign in to view the Live Pipeline (credentials are checked on the server).</p>
+    <div class="card">
+      <div id="loginError" class="login-error"></div>
+      <form id="loginForm">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit" id="loginBtn">Sign in</button>
+      </form>
     </div>
   </div>
 
-  <p class="meta" id="updatedAt">Last updated: never</p>
-  <button id="refreshBtn" type="button">Refresh</button>
-  <div id="error" class="error"></div>
+  <div id="pipelineApp" class="hidden">
+    <h1>Live Pipeline</h1>
+    <p class="sub">Source: <code id="leadsSourceLabel">https://api.midvio.com/leads</code></p>
+
+    <div class="grid">
+      <div class="card total">
+        <div class="label">Total Leads</div>
+        <div class="value" id="total">0</div>
+      </div>
+      <div class="card booked">
+        <div class="label">Booked</div>
+        <div class="value" id="booked">0</div>
+      </div>
+      <div class="card escalated">
+        <div class="label">Escalated</div>
+        <div class="value" id="escalated">0</div>
+      </div>
+      <div class="card disqualified">
+        <div class="label">Disqualified</div>
+        <div class="value" id="disqualified">0</div>
+      </div>
+    </div>
+
+    <p class="meta" id="updatedAt">Last updated: never</p>
+    <button id="refreshBtn" type="button">Refresh</button>
+    <button id="logoutBtn" type="button" style="margin-left:8px; background: transparent; border: 1px solid var(--border);">Log out</button>
+    <div id="error" class="error"></div>
+  </div>
 
   <script>
-    const apiUrl = "https://api.midvio.com/leads";
+    const API_BASE =
+      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? `${window.location.protocol}//${window.location.host}`
+        : "https://api.midvio.com";
+    const leadsUrl = `${API_BASE}/leads`;
+    const authUrl = `${API_BASE}/auth/dashboard`;
+    const AUTH_KEY = "midvio_dashboard_session";
+
+    document.getElementById("leadsSourceLabel").textContent = leadsUrl;
 
     const el = {
+      loginScreen: document.getElementById("loginScreen"),
+      pipelineApp: document.getElementById("pipelineApp"),
+      loginForm: document.getElementById("loginForm"),
+      loginError: document.getElementById("loginError"),
       total: document.getElementById("total"),
       booked: document.getElementById("booked"),
       escalated: document.getElementById("escalated"),
@@ -104,7 +169,28 @@
       updatedAt: document.getElementById("updatedAt"),
       error: document.getElementById("error"),
       refreshBtn: document.getElementById("refreshBtn"),
+      logoutBtn: document.getElementById("logoutBtn"),
     };
+
+    function showLogin() {
+      el.loginScreen.classList.remove("hidden");
+      el.pipelineApp.classList.add("hidden");
+    }
+
+    function showPipeline() {
+      el.loginScreen.classList.add("hidden");
+      el.pipelineApp.classList.remove("hidden");
+    }
+
+    function setLoginError(msg) {
+      if (!msg) {
+        el.loginError.style.display = "none";
+        el.loginError.textContent = "";
+        return;
+      }
+      el.loginError.style.display = "block";
+      el.loginError.textContent = msg;
+    }
 
     function normalizeLeads(payload) {
       if (Array.isArray(payload)) return payload;
@@ -137,22 +223,71 @@
       el.error.textContent = message || "";
     }
 
+    let refreshTimer = null;
+
     async function loadLeads() {
       setError("");
       try {
-        const res = await fetch(apiUrl, { headers: { Accept: "application/json" } });
+        const res = await fetch(leadsUrl, { headers: { Accept: "application/json" } });
         if (!res.ok) throw new Error(`Request failed (${res.status})`);
         const payload = await res.json();
         const leads = normalizeLeads(payload);
         updateStats(leads);
       } catch (err) {
-        setError(`Unable to load leads from ${apiUrl}: ${err.message}`);
+        setError(`Unable to load leads from ${leadsUrl}: ${err.message}`);
       }
     }
 
     el.refreshBtn.addEventListener("click", loadLeads);
-    loadLeads();
-    setInterval(loadLeads, 30000);
+
+    el.loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      setLoginError("");
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      try {
+        const res = await fetch(authUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = res.ok ? await res.json().catch(() => ({})) : await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = data.detail || data.message || "Login failed";
+          setLoginError(typeof msg === "string" ? msg : "Login failed");
+          return;
+        }
+        if (data.ok) {
+          sessionStorage.setItem(AUTH_KEY, "1");
+          showPipeline();
+          if (refreshTimer) clearInterval(refreshTimer);
+          loadLeads();
+          refreshTimer = setInterval(loadLeads, 30000);
+        } else {
+          setLoginError("Login failed");
+        }
+      } catch (err) {
+        setLoginError(err.message || "Network error");
+      }
+    });
+
+    el.logoutBtn.addEventListener("click", () => {
+      sessionStorage.removeItem(AUTH_KEY);
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+      document.getElementById("password").value = "";
+      showLogin();
+    });
+
+    if (sessionStorage.getItem(AUTH_KEY) === "1") {
+      showPipeline();
+      loadLeads();
+      refreshTimer = setInterval(loadLeads, 30000);
+    } else {
+      showLogin();
+    }
   </script>
 </body>
 </html>
