@@ -111,8 +111,15 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")
-async def serve_dashboard():
+async def serve_root():
+    if os.getenv("SERVE_DASHBOARD") == "true":
+        return FileResponse("static/dashboard.html")
     return FileResponse("static/hvac-demo.html")
+
+
+@app.get("/dashboard")
+async def serve_admin_dashboard():
+    return FileResponse("static/dashboard.html")
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MidVio Admin Dashboard</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #141b34;
+      --muted: #a7b1d3;
+      --text: #eef2ff;
+      --border: #263054;
+      --accent: #5b8cff;
+      --booked: #22c55e;
+      --escalated: #f59e0b;
+      --disqualified: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 28px;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .sub { margin: 0 0 24px; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .label { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+    .value { font-size: 34px; font-weight: 700; line-height: 1; }
+    .total .value { color: var(--accent); }
+    .booked .value { color: var(--booked); }
+    .escalated .value { color: var(--escalated); }
+    .disqualified .value { color: var(--disqualified); }
+    .meta { color: var(--muted); font-size: 13px; }
+    .error {
+      display: none;
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #5c1e1e;
+      background: #2b1111;
+      color: #fecaca;
+      font-size: 13px;
+    }
+    button {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <h1>Live Pipeline</h1>
+  <p class="sub">Source: <code>https://api.midvio.com/leads</code></p>
+
+  <div class="grid">
+    <div class="card total">
+      <div class="label">Total Leads</div>
+      <div class="value" id="total">0</div>
+    </div>
+    <div class="card booked">
+      <div class="label">Booked</div>
+      <div class="value" id="booked">0</div>
+    </div>
+    <div class="card escalated">
+      <div class="label">Escalated</div>
+      <div class="value" id="escalated">0</div>
+    </div>
+    <div class="card disqualified">
+      <div class="label">Disqualified</div>
+      <div class="value" id="disqualified">0</div>
+    </div>
+  </div>
+
+  <p class="meta" id="updatedAt">Last updated: never</p>
+  <button id="refreshBtn" type="button">Refresh</button>
+  <div id="error" class="error"></div>
+
+  <script>
+    const apiUrl = "https://api.midvio.com/leads";
+
+    const el = {
+      total: document.getElementById("total"),
+      booked: document.getElementById("booked"),
+      escalated: document.getElementById("escalated"),
+      disqualified: document.getElementById("disqualified"),
+      updatedAt: document.getElementById("updatedAt"),
+      error: document.getElementById("error"),
+      refreshBtn: document.getElementById("refreshBtn"),
+    };
+
+    function normalizeLeads(payload) {
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload?.leads)) return payload.leads;
+      if (Array.isArray(payload?.data)) return payload.data;
+      return [];
+    }
+
+    function getOutcome(lead) {
+      return String(
+        lead?.outcome ?? lead?.status ?? lead?.pipeline_status ?? ""
+      ).toLowerCase();
+    }
+
+    function updateStats(leads) {
+      const total = leads.length;
+      const booked = leads.filter((l) => getOutcome(l) === "booked").length;
+      const escalated = leads.filter((l) => getOutcome(l) === "escalated").length;
+      const disqualified = leads.filter((l) => getOutcome(l) === "disqualified").length;
+
+      el.total.textContent = String(total);
+      el.booked.textContent = String(booked);
+      el.escalated.textContent = String(escalated);
+      el.disqualified.textContent = String(disqualified);
+      el.updatedAt.textContent = `Last updated: ${new Date().toLocaleString()}`;
+    }
+
+    function setError(message) {
+      el.error.style.display = message ? "block" : "none";
+      el.error.textContent = message || "";
+    }
+
+    async function loadLeads() {
+      setError("");
+      try {
+        const res = await fetch(apiUrl, { headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
+        const payload = await res.json();
+        const leads = normalizeLeads(payload);
+        updateStats(leads);
+      } catch (err) {
+        setError(`Unable to load leads from ${apiUrl}: ${err.message}`);
+      }
+    }
+
+    el.refreshBtn.addEventListener("click", loadLeads);
+    loadLeads();
+    setInterval(loadLeads, 30000);
+  </script>
+</body>
+</html>
