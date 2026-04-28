@@ -257,3 +257,21 @@ async def get_clients():
                 return {"clients": [{"id":r[0],"company_name":r[1],"username":r[2],"phone_number":r[3],"active":r[4]} for r in rows]}
     except Exception as e:
         return {"clients": [], "error": str(e)}
+@app.post("/client-login")
+async def client_login(data: dict):
+    import hashlib
+    try:
+        from db.postgres import get_conn
+        hashed = hashlib.sha256(data['password'].encode()).hexdigest()
+        with get_conn() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, company_name, username, active FROM clients WHERE username = %s AND password_hash = %s",
+                    (data['username'], hashed)
+                )
+                row = cursor.fetchone()
+                if row and row[3]:
+                    return {"ok": True, "client_id": row[0], "company_name": row[1], "username": row[2]}
+                return {"ok": False, "detail": "Invalid credentials"}
+    except Exception as e:
+        return {"ok": False, "detail": str(e)}

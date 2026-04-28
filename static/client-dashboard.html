@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MidVio – Client Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #06080f;
+    --surface: #0d1120;
+    --surface2: #131829;
+    --border: rgba(99,179,237,0.12);
+    --accent: #3ecfcf;
+    --accent2: #2563eb;
+    --text: #e8edf5;
+    --muted: #6b7a99;
+    --success: #22d3a5;
+    --warning: #f59e0b;
+    --danger: #f43f5e;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    display: flex;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 240px;
+    min-height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 100;
+  }
+
+  .sidebar-logo {
+    padding: 28px 24px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-text {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+  }
+
+  .logo-sub {
+    font-size: 10px;
+    letter-spacing: 2.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .client-badge {
+    margin: 16px 16px 0;
+    background: rgba(62,207,207,0.08);
+    border: 1px solid rgba(62,207,207,0.2);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+
+  .client-badge-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  .client-badge-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sidebar-nav {
+    padding: 20px 12px;
+    flex: 1;
+  }
+
+  .nav-section {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    padding: 0 12px;
+    margin-bottom: 8px;
+    margin-top: 16px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13.5px;
+    font-weight: 400;
+    transition: all 0.2s;
+    margin-bottom: 2px;
+    text-decoration: none;
+  }
+
+  .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+  .nav-item.active { background: rgba(62,207,207,0.1); color: var(--accent); }
+
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+  .nav-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    margin-left: auto;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity:1; } 50% { opacity:0.4; }
+  }
+
+  .sidebar-footer {
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .logout-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* ── Main ── */
+  .main {
+    margin-left: 240px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .topbar {
+    height: 64px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    backdrop-filter: blur(12px);
+  }
+
+  .page-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(34,211,165,0.1);
+    border: 1px solid rgba(34,211,165,0.25);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: var(--success);
+    font-weight: 500;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: pulse 2s infinite;
+  }
+
+  .content {
+    padding: 32px;
+    flex: 1;
+  }
+
+  /* ── Stats Grid ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+    cursor: default;
+  }
+
+  .stat-card:hover {
+    border-color: rgba(62,207,207,0.3);
+    transform: translateY(-2px);
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .stat-card:hover::before { opacity: 1; }
+
+  .stat-label {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .stat-change {
+    font-size: 12px;
+    margin-top: 8px;
+    color: var(--success);
+  }
+
+  .stat-icon {
+    position: absolute;
+    top: 20px; right: 20px;
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(62,207,207,0.08);
+  }
+
+  .stat-icon svg { width: 18px; height: 18px; color: var(--accent); }
+
+  /* ── Two Column Layout ── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .panel-action {
+    font-size: 12px;
+    color: var(--accent);
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .panel-action:hover { text-decoration: underline; }
+
+  /* ── Leads Table ── */
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: left;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(99,179,237,0.06);
+    transition: background 0.15s;
+    cursor: pointer;
+  }
+
+  tbody tr:hover { background: rgba(255,255,255,0.025); }
+
+  tbody td {
+    padding: 13px 22px;
+    font-size: 13.5px;
+    color: var(--text);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .badge-new { background: rgba(37,99,235,0.15); color: #60a5fa; border: 1px solid rgba(37,99,235,0.3); }
+  .badge-qualified { background: rgba(34,211,165,0.1); color: var(--success); border: 1px solid rgba(34,211,165,0.25); }
+  .badge-contacted { background: rgba(245,158,11,0.1); color: var(--warning); border: 1px solid rgba(245,158,11,0.25); }
+  .badge-lost { background: rgba(244,63,94,0.1); color: var(--danger); border: 1px solid rgba(244,63,94,0.25); }
+  .badge-scheduled { background: rgba(62,207,207,0.1); color: var(--accent); border: 1px solid rgba(62,207,207,0.25); }
+  .badge-completed { background: rgba(34,211,165,0.1); color: var(--success); border: 1px solid rgba(34,211,165,0.25); }
+  .badge-missed { background: rgba(244,63,94,0.1); color: var(--danger); border: 1px solid rgba(244,63,94,0.25); }
+
+  /* ── Appointments ── */
+  .appt-list { padding: 8px 0; }
+
+  .appt-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 22px;
+    border-bottom: 1px solid rgba(99,179,237,0.06);
+    transition: background 0.15s;
+    cursor: pointer;
+  }
+  .appt-item:hover { background: rgba(255,255,255,0.025); }
+  .appt-item:last-child { border-bottom: none; }
+
+  .appt-time {
+    background: rgba(62,207,207,0.08);
+    border: 1px solid rgba(62,207,207,0.15);
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: center;
+    min-width: 54px;
+  }
+
+  .appt-time-hour {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .appt-time-ampm {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .appt-info { flex: 1; }
+
+  .appt-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .appt-address {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── Voice Calls ── */
+  .calls-panel { grid-column: 1 / -1; }
+
+  .call-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 22px;
+    border-bottom: 1px solid rgba(99,179,237,0.06);
+    transition: background 0.15s;
+  }
+  .call-item:hover { background: rgba(255,255,255,0.025); }
+  .call-item:last-child { border-bottom: none; }
+
+  .call-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .call-icon.inbound { background: rgba(34,211,165,0.12); }
+  .call-icon.outbound { background: rgba(37,99,235,0.12); }
+  .call-icon.missed { background: rgba(244,63,94,0.12); }
+
+  .call-icon svg { width: 16px; height: 16px; }
+
+  .call-info { flex: 1; }
+  .call-name { font-size: 14px; font-weight: 500; }
+  .call-detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .call-duration {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  /* ── Pipeline ── */
+  .pipeline-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 18px 22px;
+  }
+
+  .pipeline-stage {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .pipeline-stage-label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .pipeline-count {
+    font-family: 'Syne', sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  .pipeline-bar {
+    height: 3px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+
+  .pipeline-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width 1s cubic-bezier(.4,0,.2,1);
+  }
+
+  /* ── Login Screen ── */
+  #login-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 44px 40px;
+    width: 380px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .login-card::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(62,207,207,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .login-logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .login-subtitle {
+    font-size: 11px;
+    letter-spacing: 2.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+
+  .form-group { margin-bottom: 18px; }
+
+  .form-label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .form-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .form-input:focus { border-color: var(--accent); }
+
+  .login-btn {
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+
+  .login-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+  .login-error {
+    background: rgba(244,63,94,0.1);
+    border: 1px solid rgba(244,63,94,0.25);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--danger);
+    margin-top: 14px;
+    display: none;
+  }
+
+  /* ── Animations ── */
+  .fade-in {
+    animation: fadeIn 0.5s ease forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    padding: 40px 22px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">MidVio</div>
+    <div class="login-subtitle">Client Portal</div>
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input class="form-input" id="login-user" type="text" placeholder="your username" autocomplete="off"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input class="form-input" id="login-pass" type="password" placeholder="••••••••"/>
+    </div>
+    <button class="login-btn" onclick="doLogin()">Access Dashboard →</button>
+    <div class="login-error" id="login-error">Invalid credentials. Please try again.</div>
+  </div>
+</div>
+
+<!-- SIDEBAR -->
+<div class="sidebar" id="sidebar" style="display:none">
+  <div class="sidebar-logo">
+    <div class="logo-text">MidVio</div>
+    <div class="logo-sub">HVAC Command Center</div>
+  </div>
+  <div class="client-badge">
+    <div class="client-badge-label">Client Account</div>
+    <div class="client-badge-name" id="sidebar-company">—</div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-section">Overview</div>
+    <a class="nav-item active" onclick="showTab('overview',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+      <span class="nav-dot"></span>
+    </a>
+    <div class="nav-section">Operations</div>
+    <a class="nav-item" onclick="showTab('leads',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-1a4 4 0 00-5.916-3.52M9 20H4v-1a4 4 0 015.916-3.52M15 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+      Leads
+    </a>
+    <a class="nav-item" onclick="showTab('appointments',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path stroke-linecap="round" d="M16 2v4M8 2v4M3 10h18"/></svg>
+      Appointments
+    </a>
+    <a class="nav-item" onclick="showTab('calls',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5.75A2.75 2.75 0 015.75 3h.5a2 2 0 012 2v1.5a2 2 0 01-2 2H5.5A10.25 10.25 0 0015.5 18.5v-.75a2 2 0 012-2H19a2 2 0 012 2v.5A2.75 2.75 0 0118.25 21C9.831 21 3 14.169 3 5.75z"/></svg>
+      Voice Calls
+    </a>
+    <a class="nav-item" onclick="showTab('pipeline',this)">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M3 12h14M3 18h10"/></svg>
+      Pipeline
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="logout-btn" onclick="doLogout()">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/></svg>
+      Logout
+    </button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="main-app" style="display:none">
+  <div class="topbar">
+    <div class="page-title" id="page-title">Dashboard</div>
+    <div class="topbar-right">
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        System Active
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- OVERVIEW TAB -->
+    <div class="tab-content active" id="tab-overview">
+      <div class="stats-grid fade-in">
+        <div class="stat-card">
+          <div class="stat-label">Total Leads</div>
+          <div class="stat-value" id="stat-leads">—</div>
+          <div class="stat-change">↑ This month</div>
+          <div class="stat-icon"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M17 20h5v-1a4 4 0 00-5.916-3.52M9 20H4v-1a4 4 0 015.916-3.52M15 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Appointments</div>
+          <div class="stat-value" id="stat-appts">—</div>
+          <div class="stat-change">↑ Scheduled</div>
+          <div class="stat-icon"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Voice Calls</div>
+          <div class="stat-value" id="stat-calls">—</div>
+          <div class="stat-change">↑ AI handled</div>
+          <div class="stat-icon"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M3 5.75A2.75 2.75 0 015.75 3h.5a2 2 0 012 2v1.5a2 2 0 01-2 2H5.5A10.25 10.25 0 0015.5 18.5v-.75a2 2 0 012-2H19a2 2 0 012 2v.5A2.75 2.75 0 0118.25 21C9.831 21 3 14.169 3 5.75z"/></svg></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Pipeline Value</div>
+          <div class="stat-value" id="stat-pipeline">—</div>
+          <div class="stat-change">↑ Active deals</div>
+          <div class="stat-icon"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+        </div>
+      </div>
+
+      <div class="two-col fade-in">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Recent Leads</div>
+            <button class="panel-action" onclick="showTab('leads', null)">View all →</button>
+          </div>
+          <div class="table-wrap">
+            <table id="overview-leads-table">
+              <thead><tr><th>Name</th><th>Status</th><th>Source</th></tr></thead>
+              <tbody id="overview-leads-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Upcoming Appointments</div>
+            <button class="panel-action" onclick="showTab('appointments', null)">View all →</button>
+          </div>
+          <div class="appt-list" id="overview-appts"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEADS TAB -->
+    <div class="tab-content" id="tab-leads">
+      <div class="panel fade-in">
+        <div class="panel-header">
+          <div class="panel-title">All Leads</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Source</th><th>Date</th></tr></thead>
+            <tbody id="leads-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- APPOINTMENTS TAB -->
+    <div class="tab-content" id="tab-appointments">
+      <div class="panel fade-in">
+        <div class="panel-header">
+          <div class="panel-title">All Appointments</div>
+        </div>
+        <div class="appt-list" id="appts-list"></div>
+      </div>
+    </div>
+
+    <!-- CALLS TAB -->
+    <div class="tab-content" id="tab-calls">
+      <div class="panel fade-in calls-panel">
+        <div class="panel-header">
+          <div class="panel-title">Voice Call Log</div>
+        </div>
+        <div id="calls-list"></div>
+      </div>
+    </div>
+
+    <!-- PIPELINE TAB -->
+    <div class="tab-content" id="tab-pipeline">
+      <div class="panel fade-in">
+        <div class="panel-header">
+          <div class="panel-title">Sales Pipeline</div>
+        </div>
+        <div class="pipeline-row" id="pipeline-stages"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── CONFIG — change this to your real API URL ──
+const API_BASE = 'https://dashboard.midvio.com/api'; // or http://localhost:8000
+
+// ── State ──
+let currentClient = null;
+
+// ── Mock data (used when API not available) ──
+function getMockData(clientId) {
+  return {
+    leads: [
+      { id:1, name:'John Martinez', phone:'(516) 555-0192', email:'john@gmail.com', status:'qualified', source:'Voice AI', date:'Apr 28' },
+      { id:2, name:'Sarah Chen', phone:'(718) 555-0334', email:'schen@yahoo.com', status:'new', source:'Web Form', date:'Apr 27' },
+      { id:3, name:'Mike Johnson', phone:'(631) 555-0871', email:'mike.j@gmail.com', status:'contacted', source:'Voice AI', date:'Apr 26' },
+      { id:4, name:'Lisa Torres', phone:'(917) 555-0445', email:'ltorres@gmail.com', status:'qualified', source:'Referral', date:'Apr 25' },
+      { id:5, name:'David Park', phone:'(516) 555-0223', email:'dpark@hotmail.com', status:'lost', source:'Web Form', date:'Apr 24' },
+    ],
+    appointments: [
+      { id:1, name:'John Martinez', address:'142 Oak St, Brooklyn NY', time:'09:00', ampm:'AM', date:'Apr 29', status:'scheduled', type:'AC Inspection' },
+      { id:2, name:'Sarah Chen', address:'88 Pine Ave, Queens NY', time:'02:30', ampm:'PM', date:'Apr 29', status:'scheduled', type:'HVAC Install' },
+      { id:3, name:'Robert Kim', address:'55 Elm Rd, Long Island NY', time:'11:00', ampm:'AM', date:'Apr 30', status:'scheduled', type:'Maintenance' },
+      { id:4, name:'Ana Rivera', address:'201 Maple Dr, Bronx NY', time:'04:00', ampm:'PM', date:'May 1', status:'completed', type:'AC Repair' },
+    ],
+    calls: [
+      { id:1, name:'John Martinez', phone:'(516) 555-0192', type:'inbound', duration:'4:32', status:'Qualified', date:'Today 10:14 AM' },
+      { id:2, name:'Unknown Caller', phone:'(718) 555-0998', type:'inbound', duration:'1:12', status:'Scheduled', date:'Today 9:01 AM' },
+      { id:3, name:'Sarah Chen', phone:'(718) 555-0334', type:'outbound', duration:'2:45', status:'Follow-up sent', date:'Yesterday 3:22 PM' },
+      { id:4, name:'(631) 555-0871', phone:'(631) 555-0871', type:'missed', duration:'—', status:'No answer', date:'Yesterday 11:00 AM' },
+      { id:5, name:'Mike Johnson', phone:'(631) 555-0871', type:'inbound', duration:'6:10', status:'Booked', date:'Apr 26 2:15 PM' },
+    ],
+    pipeline: [
+      { stage:'New', count: 8, pct: 80 },
+      { stage:'Contacted', count: 5, pct: 50 },
+      { stage:'Qualified', count: 3, pct: 30 },
+      { stage:'Closed', count: 2, pct: 20 },
+    ]
+  };
+}
+
+// ── Login ──
+async function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+
+  if (!username || !password) {
+    errEl.textContent = 'Please enter your username and password.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // Try real API first
+  try {
+    const res = await fetch(`${API_BASE}/client-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      currentClient = { id: data.client_id, company: data.company_name, username };
+      loadApp();
+      return;
+    }
+  } catch(e) {
+    // API not reachable — use demo mode
+    console.warn('API not available, using demo mode');
+  }
+
+  // Demo fallback — accept any non-empty credentials
+  currentClient = {
+    id: 1,
+    company: username === 'hvacpro' ? 'HVAC Pro LLC' : 
+             username === 'brooklyn' ? 'Brooklyn HVAC Services' :
+             username === 'nyccool' ? 'NYC Cool Air HVAC' : username.toUpperCase() + ' HVAC',
+    username
+  };
+  loadApp();
+}
+
+function loadApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('sidebar').style.display = 'flex';
+  document.getElementById('main-app').style.display = 'flex';
+  document.getElementById('sidebar-company').textContent = currentClient.company;
+  loadData();
+}
+
+function doLogout() {
+  currentClient = null;
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('sidebar').style.display = 'none';
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+}
+
+// ── Load data ──
+async function loadData() {
+  let data;
+  try {
+    const [leadsRes, apptsRes, callsRes] = await Promise.all([
+      fetch(`${API_BASE}/leads?client_id=${currentClient.id}`),
+      fetch(`${API_BASE}/appointments?client_id=${currentClient.id}`),
+      fetch(`${API_BASE}/voice-calls?client_id=${currentClient.id}`)
+    ]);
+    data = {
+      leads: (await leadsRes.json()).leads || [],
+      appointments: (await apptsRes.json()).appointments || [],
+      calls: (await callsRes.json()).calls || [],
+      pipeline: []
+    };
+  } catch(e) {
+    data = getMockData(currentClient.id);
+  }
+
+  renderAll(data);
+}
+
+// ── Render ──
+function renderAll(data) {
+  // Stats
+  document.getElementById('stat-leads').textContent = data.leads.length;
+  document.getElementById('stat-appts').textContent = data.appointments.filter(a => a.status === 'scheduled').length;
+  document.getElementById('stat-calls').textContent = data.calls.length;
+  document.getElementById('stat-pipeline').textContent = '$' + (data.leads.filter(l => l.status === 'qualified').length * 2500).toLocaleString();
+
+  // Overview leads (top 3)
+  const olBody = document.getElementById('overview-leads-body');
+  olBody.innerHTML = data.leads.slice(0,3).map(l => `
+    <tr>
+      <td>${l.name}</td>
+      <td><span class="badge badge-${l.status}">${l.status}</span></td>
+      <td style="color:var(--muted);font-size:12px">${l.source || '—'}</td>
+    </tr>`).join('');
+
+  // Overview appts (top 3)
+  const oa = document.getElementById('overview-appts');
+  oa.innerHTML = data.appointments.slice(0,3).map(a => `
+    <div class="appt-item">
+      <div class="appt-time">
+        <div class="appt-time-hour">${a.time}</div>
+        <div class="appt-time-ampm">${a.ampm || 'AM'}</div>
+      </div>
+      <div class="appt-info">
+        <div class="appt-name">${a.name}</div>
+        <div class="appt-address">${a.address}</div>
+      </div>
+      <span class="badge badge-${a.status}">${a.status}</span>
+    </div>`).join('') || '<div class="empty-state">No upcoming appointments</div>';
+
+  // Full leads
+  const lb = document.getElementById('leads-body');
+  lb.innerHTML = data.leads.map(l => `
+    <tr>
+      <td><strong>${l.name}</strong></td>
+      <td style="color:var(--muted)">${l.phone || '—'}</td>
+      <td style="color:var(--muted)">${l.email || '—'}</td>
+      <td><span class="badge badge-${l.status}">${l.status}</span></td>
+      <td style="color:var(--muted);font-size:12px">${l.source || '—'}</td>
+      <td style="color:var(--muted);font-size:12px">${l.date || '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted)">No leads yet</td></tr>';
+
+  // Full appointments
+  const al = document.getElementById('appts-list');
+  al.innerHTML = data.appointments.map(a => `
+    <div class="appt-item">
+      <div class="appt-time">
+        <div class="appt-time-hour">${a.time}</div>
+        <div class="appt-time-ampm">${a.ampm || 'AM'}</div>
+      </div>
+      <div class="appt-info">
+        <div class="appt-name">${a.name} <span style="color:var(--muted);font-size:12px;margin-left:8px">${a.type || ''}</span></div>
+        <div class="appt-address">${a.address} · ${a.date}</div>
+      </div>
+      <span class="badge badge-${a.status}">${a.status}</span>
+    </div>`).join('') || '<div class="empty-state">No appointments</div>';
+
+  // Calls
+  const cl = document.getElementById('calls-list');
+  cl.innerHTML = data.calls.map(c => `
+    <div class="call-item">
+      <div class="call-icon ${c.type}">
+        ${c.type === 'inbound' ? '<svg fill="none" viewBox="0 0 24 24" stroke="#22d3a5" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>' :
+          c.type === 'outbound' ? '<svg fill="none" viewBox="0 0 24 24" stroke="#60a5fa" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>' :
+          '<svg fill="none" viewBox="0 0 24 24" stroke="#f43f5e" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>'}
+      </div>
+      <div class="call-info">
+        <div class="call-name">${c.name}</div>
+        <div class="call-detail">${c.phone} · ${c.date} · ${c.status}</div>
+      </div>
+      <div class="call-duration">${c.duration}</div>
+    </div>`).join('') || '<div class="empty-state">No calls recorded</div>';
+
+  // Pipeline
+  const ps = document.getElementById('pipeline-stages');
+  const pipeData = data.pipeline.length ? data.pipeline : [
+    { stage:'New', count: data.leads.filter(l=>l.status==='new').length, pct: 80 },
+    { stage:'Contacted', count: data.leads.filter(l=>l.status==='contacted').length, pct: 55 },
+    { stage:'Qualified', count: data.leads.filter(l=>l.status==='qualified').length, pct: 35 },
+    { stage:'Closed', count: data.leads.filter(l=>l.status==='closed').length, pct: 20 },
+  ];
+  ps.innerHTML = pipeData.map(p => `
+    <div class="pipeline-stage">
+      <div class="pipeline-stage-label">${p.stage}</div>
+      <div class="pipeline-count">${p.count}</div>
+      <div class="pipeline-bar"><div class="pipeline-fill" style="width:${p.pct}%"></div></div>
+    </div>`).join('');
+}
+
+// ── Tab navigation ──
+function showTab(name, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (el) el.classList.add('active');
+  const titles = { overview:'Dashboard', leads:'Leads', appointments:'Appointments', calls:'Voice Calls', pipeline:'Pipeline' };
+  document.getElementById('page-title').textContent = titles[name] || name;
+}
+
+// ── Enter key on login ──
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') doLogin();
+});
+</script>
+</body>
+</html>
