@@ -6,560 +6,126 @@
 <title>MidVio — HVAC Command Center</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #050810;
-    --surface: #0a0f1e;
-    --surface2: #0f1628;
-    --border: rgba(99,179,237,0.12);
-    --accent: #3b82f6;
-    --accent2: #06b6d4;
-    --green: #10b981;
-    --yellow: #f59e0b;
-    --red: #ef4444;
-    --purple: #8b5cf6;
-    --text: #e2e8f0;
-    --muted: #64748b;
-    --glow: rgba(59,130,246,0.15);
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: 'JetBrains Mono', monospace;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* BACKGROUND GRID */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image: 
-      linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  /* LOGIN SCREEN */
-  #login-screen {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-    background: var(--bg);
-  }
-
-  .login-box {
-    width: 380px;
-    padding: 48px 40px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .login-box::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  }
-
-  .login-logo {
-    font-family: 'Syne', sans-serif;
-    font-size: 24px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    margin-bottom: 8px;
-    background: linear-gradient(135deg, #fff, var(--accent2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
-  .login-sub {
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 36px;
-  }
-
-  .login-error {
-    background: rgba(239,68,68,0.1);
-    border: 1px solid rgba(239,68,68,0.3);
-    color: #fca5a5;
-    padding: 10px 14px;
-    border-radius: 3px;
-    font-size: 12px;
-    margin-bottom: 16px;
-    display: none;
-  }
-
-  .field-label {
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 8px;
-  }
-
-  .field-input {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 12px 14px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
-    border-radius: 3px;
-    margin-bottom: 20px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .field-input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-  }
-
-  .login-btn {
-    width: 100%;
-    padding: 13px;
-    background: var(--accent);
-    color: #fff;
-    font-family: 'Syne', sans-serif;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .login-btn:hover { background: #2563eb; transform: translateY(-1px); }
-
-  /* DASHBOARD */
-  #dashboard { display: none; position: relative; z-index: 1; }
-
-  /* HEADER */
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 32px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(10,15,30,0.8);
-    backdrop-filter: blur(20px);
-    position: sticky;
-    top: 0;
-    z-index: 50;
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .logo {
-    font-family: 'Syne', sans-serif;
-    font-size: 20px;
-    font-weight: 800;
-    background: linear-gradient(135deg, #fff, var(--accent2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
-  .live-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(16,185,129,0.1);
-    border: 1px solid rgba(16,185,129,0.3);
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 10px;
-    color: var(--green);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-
-  .live-dot {
-    width: 6px; height: 6px;
-    background: var(--green);
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.8); }
-  }
-
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .timestamp {
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .btn-refresh {
-    padding: 8px 16px;
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.2s;
-    letter-spacing: 1px;
-  }
-
-  .btn-refresh:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  .btn-logout {
-    padding: 8px 16px;
-    background: rgba(239,68,68,0.1);
-    border: 1px solid rgba(239,68,68,0.2);
-    color: #fca5a5;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.2s;
-    letter-spacing: 1px;
-  }
-
-  .btn-logout:hover { background: rgba(239,68,68,0.2); }
-
-  /* MAIN CONTENT */
-  .main {
-    padding: 32px;
-    max-width: 1400px;
-    margin: 0 auto;
-  }
-
-  /* SECTION LABEL */
-  .section-label {
-    font-size: 10px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .section-label::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-  }
-
-  /* STAT CARDS */
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-    margin-bottom: 32px;
-  }
-
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 24px;
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.2s, border-color 0.2s;
-    animation: fadeUp 0.5s ease both;
-  }
-
-  .stat-card:hover {
-    transform: translateY(-2px);
-    border-color: rgba(99,179,237,0.25);
-  }
-
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .stat-card:nth-child(1) { animation-delay: 0.1s; }
-  .stat-card:nth-child(2) { animation-delay: 0.2s; }
-  .stat-card:nth-child(3) { animation-delay: 0.3s; }
-  .stat-card:nth-child(4) { animation-delay: 0.4s; }
-
-  .stat-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-  }
-
-  .stat-card.blue::before { background: linear-gradient(90deg, var(--accent), transparent); }
-  .stat-card.green::before { background: linear-gradient(90deg, var(--green), transparent); }
-  .stat-card.yellow::before { background: linear-gradient(90deg, var(--yellow), transparent); }
-  .stat-card.red::before { background: linear-gradient(90deg, var(--red), transparent); }
-
-  .stat-label {
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 12px;
-  }
-
-  .stat-value {
-    font-family: 'Syne', sans-serif;
-    font-size: 48px;
-    font-weight: 800;
-    line-height: 1;
-    margin-bottom: 8px;
-  }
-
-  .stat-card.blue .stat-value { color: var(--accent); }
-  .stat-card.green .stat-value { color: var(--green); }
-  .stat-card.yellow .stat-value { color: var(--yellow); }
-  .stat-card.red .stat-value { color: var(--red); }
-
-  .stat-sub {
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  /* TWO COLUMN */
-  .two-col {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 32px;
-  }
-
-  /* FUNNEL */
-  .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 24px;
-    animation: fadeUp 0.5s ease 0.5s both;
-  }
-
-  .panel-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 14px;
-    font-weight: 700;
-    margin-bottom: 24px;
-    color: #fff;
-  }
-
-  .funnel-step {
-    margin-bottom: 16px;
-  }
-
-  .funnel-step-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
-  }
-
-  .funnel-step-name {
-    font-size: 12px;
-    color: var(--text);
-  }
-
-  .funnel-step-count {
-    font-size: 12px;
-    color: var(--muted);
-  }
-
-  .funnel-bar-bg {
-    height: 4px;
-    background: var(--surface2);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .funnel-bar-fill {
-    height: 100%;
-    border-radius: 2px;
-    transition: width 1s ease;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-  }
-
-  /* OUTCOMES */
-  .outcome-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .outcome-item:last-child { border-bottom: none; }
-
-  .outcome-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    margin-right: 10px;
-    flex-shrink: 0;
-  }
-
-  .outcome-left {
-    display: flex;
-    align-items: center;
-  }
-
-  .outcome-name { font-size: 12px; }
-  .outcome-count {
-    font-family: 'Syne', sans-serif;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  /* LEADS TABLE */
-  .leads-panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-    animation: fadeUp 0.5s ease 0.6s both;
-  }
-
-  .leads-header {
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .leads-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 14px;
-    font-weight: 700;
-    color: #fff;
-  }
-
-  .leads-count {
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  thead th {
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    padding: 12px 24px;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface2);
-  }
-
-  tbody tr {
-    border-bottom: 1px solid var(--border);
-    transition: background 0.15s;
-  }
-
-  tbody tr:last-child { border-bottom: none; }
-  tbody tr:hover { background: rgba(59,130,246,0.04); }
-
-  tbody td {
-    padding: 14px 24px;
-    font-size: 12px;
-    color: var(--text);
-  }
-
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    font-weight: 500;
-  }
-
-  .status-badge.new { background: rgba(59,130,246,0.1); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); }
-  .status-badge.booked { background: rgba(16,185,129,0.1); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); }
-  .status-badge.escalated { background: rgba(245,158,11,0.1); color: #fcd34d; border: 1px solid rgba(245,158,11,0.2); }
-  .status-badge.disqualified { background: rgba(239,68,68,0.1); color: #fca5a5; border: 1px solid rgba(239,68,68,0.2); }
-  .status-badge.qualified { background: rgba(139,92,246,0.1); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.2); }
-
-  .empty-state {
-    padding: 60px 24px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 12px;
-    letter-spacing: 1px;
-  }
-
-  .empty-state-icon {
-    font-size: 32px;
-    margin-bottom: 12px;
-    opacity: 0.3;
-  }
-
-  /* LOADING */
-  .loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
-    gap: 8px;
-    color: var(--muted);
-    font-size: 12px;
-  }
-
-  .spinner {
-    width: 16px; height: 16px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  @media (max-width: 900px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .two-col { grid-template-columns: 1fr; }
-    .main { padding: 16px; }
-  }
+:root{--bg:#050810;--surface:#0a0f1e;--surface2:#0f1628;--border:rgba(99,179,237,0.12);--accent:#3b82f6;--accent2:#06b6d4;--green:#10b981;--yellow:#f59e0b;--red:#ef4444;--purple:#8b5cf6;--text:#e2e8f0;--muted:#64748b}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(59,130,246,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+#login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:200;background:var(--bg)}
+.login-box{width:400px;padding:48px 40px;background:var(--surface);border:1px solid var(--border);border-radius:4px;position:relative;overflow:hidden}
+.login-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),transparent)}
+.login-logo{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;background:linear-gradient(135deg,#fff,var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
+.login-sub{font-size:10px;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-bottom:36px}
+.login-error{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;padding:10px 14px;border-radius:3px;font-size:12px;margin-bottom:16px;display:none}
+.field-label{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.field-input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:12px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;border-radius:3px;margin-bottom:20px;outline:none;transition:border-color 0.2s}
+.field-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
+.login-btn{width:100%;padding:13px;background:var(--accent);color:#fff;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;border:none;border-radius:3px;cursor:pointer;transition:all 0.2s}
+.login-btn:hover{background:#2563eb;transform:translateY(-1px)}
+#app{display:none;width:100%;position:relative;z-index:1}
+.sidebar{width:220px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);position:fixed;top:0;left:0;display:flex;flex-direction:column;z-index:50}
+.sidebar-logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;background:linear-gradient(135deg,#fff,var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sidebar-user{font-size:10px;color:var(--muted);margin-top:4px;letter-spacing:1px}
+.live-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);padding:3px 8px;border-radius:20px;font-size:9px;color:var(--green);letter-spacing:1px;text-transform:uppercase;margin-top:8px}
+.live-dot{width:5px;height:5px;background:var(--green);border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.8)}}
+.nav{flex:1;padding:16px 0;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;font-size:12px;color:var(--muted);transition:all 0.15s;border-left:2px solid transparent;letter-spacing:0.5px}
+.nav-item:hover{color:var(--text);background:rgba(59,130,246,0.05)}
+.nav-item.active{color:var(--accent);border-left-color:var(--accent);background:rgba(59,130,246,0.08)}
+.nav-icon{font-size:14px;width:18px;text-align:center}
+.nav-section{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:16px 20px 8px;opacity:0.6}
+.sidebar-bottom{padding:16px;border-top:1px solid var(--border)}
+.btn-sm{width:100%;padding:8px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;border-radius:3px;cursor:pointer;transition:all 0.2s;margin-bottom:8px;letter-spacing:1px}
+.btn-sm:hover{border-color:var(--accent);color:var(--accent)}
+.btn-sm.danger:hover{border-color:var(--red);color:#fca5a5}
+.main-content{margin-left:220px;flex:1;padding:32px;min-height:100vh}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+.page-title{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#fff}
+.page-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.section-label{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:16px;display:flex;align-items:center;gap:12px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:20px;position:relative;overflow:hidden;transition:transform 0.2s,border-color 0.2s;animation:fadeUp 0.5s ease both}
+.stat-card:hover{transform:translateY(-2px);border-color:rgba(99,179,237,0.25)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.stat-card.blue::before{background:linear-gradient(90deg,var(--accent),transparent)}
+.stat-card.green::before{background:linear-gradient(90deg,var(--green),transparent)}
+.stat-card.yellow::before{background:linear-gradient(90deg,var(--yellow),transparent)}
+.stat-card.red::before{background:linear-gradient(90deg,var(--red),transparent)}
+.stat-card.purple::before{background:linear-gradient(90deg,var(--purple),transparent)}
+.stat-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.stat-value{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;line-height:1;margin-bottom:6px}
+.stat-card.blue .stat-value{color:var(--accent)}
+.stat-card.green .stat-value{color:var(--green)}
+.stat-card.yellow .stat-value{color:var(--yellow)}
+.stat-card.red .stat-value{color:var(--red)}
+.stat-card.purple .stat-value{color:var(--purple)}
+.stat-sub{font-size:10px;color:var(--muted)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:24px;animation:fadeUp 0.5s ease 0.3s both}
+.panel-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;margin-bottom:20px;color:#fff}
+.funnel-step{margin-bottom:14px}
+.funnel-step-header{display:flex;justify-content:space-between;margin-bottom:5px}
+.funnel-step-name{font-size:11px;color:var(--text)}
+.funnel-step-count{font-size:11px;color:var(--muted)}
+.funnel-bar-bg{height:3px;background:var(--surface2);border-radius:2px;overflow:hidden}
+.funnel-bar-fill{height:100%;border-radius:2px;transition:width 1s ease;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.outcome-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.outcome-item:last-child{border-bottom:none}
+.outcome-left{display:flex;align-items:center}
+.outcome-dot{width:7px;height:7px;border-radius:50%;margin-right:10px}
+.outcome-name{font-size:12px}
+.outcome-count{font-family:'Syne',sans-serif;font-size:18px;font-weight:700}
+.table-panel{background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:28px}
+.table-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.table-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#fff}
+.table-count{font-size:11px;color:var(--muted)}
+table{width:100%;border-collapse:collapse}
+thead th{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:10px 20px;text-align:left;border-bottom:1px solid var(--border);background:var(--surface2)}
+tbody tr{border-bottom:1px solid var(--border);transition:background 0.15s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:rgba(59,130,246,0.04)}
+tbody td{padding:12px 20px;font-size:11px;color:var(--text)}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:9px;letter-spacing:1px;text-transform:uppercase}
+.badge.new,.badge.inprogress{background:rgba(59,130,246,0.1);color:#93c5fd;border:1px solid rgba(59,130,246,0.2)}
+.badge.booked,.badge.ok,.badge.active,.badge.completed{background:rgba(16,185,129,0.1);color:#6ee7b7;border:1px solid rgba(16,185,129,0.2)}
+.badge.escalated,.badge.urgent,.badge.scheduled{background:rgba(245,158,11,0.1);color:#fcd34d;border:1px solid rgba(245,158,11,0.2)}
+.badge.disqualified,.badge.missing,.badge.inactive,.badge.cancelled{background:rgba(239,68,68,0.1);color:#fca5a5;border:1px solid rgba(239,68,68,0.2)}
+.badge.qualified,.badge.emergency{background:rgba(139,92,246,0.1);color:#c4b5fd;border:1px solid rgba(139,92,246,0.2)}
+.badge.routine{background:rgba(16,185,129,0.1);color:#6ee7b7;border:1px solid rgba(16,185,129,0.2)}
+.filters{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.filter-input{flex:1;min-width:150px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.form-group{display:flex;flex-direction:column;gap:6px}
+.form-group.full{grid-column:1/-1}
+.form-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+.form-input,.form-select,.form-textarea{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 12px;font-family:'JetBrains Mono',monospace;font-size:12px;border-radius:3px;outline:none;transition:border-color 0.2s}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,0.1)}
+.form-select option{background:var(--surface)}
+.form-textarea{resize:vertical;min-height:80px}
+.btn-primary{padding:10px 20px;background:var(--accent);color:#fff;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border:none;border-radius:3px;cursor:pointer;transition:all 0.2s}
+.btn-primary:hover{background:#2563eb;transform:translateY(-1px)}
+.status-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.status-row:last-child{border-bottom:none}
+.status-name{font-size:12px}
+.code-block{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:16px;font-size:11px;color:var(--accent2);line-height:1.8;overflow-x:auto;white-space:pre;margin-top:12px}
+.empty-state{padding:48px;text-align:center;color:var(--muted);font-size:12px}
+.empty-icon{font-size:28px;margin-bottom:10px;opacity:0.3}
+.notif{position:fixed;top:20px;right:20px;z-index:1000;padding:12px 20px;border-radius:4px;font-size:12px;display:none}
+.notif.success{background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);color:#6ee7b7}
+.notif.error{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5}
+.page{display:none}
+.page.active{display:block;animation:fadeUp 0.3s ease}
+.admin-only{display:none}
+.spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;display:inline-block;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
+
+<div class="notif" id="notif"></div>
 
 <!-- LOGIN -->
 <div id="login-screen">
@@ -568,295 +134,408 @@
     <div class="login-sub">HVAC Command Center</div>
     <div class="login-error" id="login-error">Invalid credentials. Try again.</div>
     <div class="field-label">Username</div>
-    <input class="field-input" type="text" id="username" placeholder="admin" autocomplete="username">
+    <input class="field-input" type="text" id="l-user" placeholder="admin" autocomplete="username">
     <div class="field-label">Password</div>
-    <input class="field-input" type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+    <input class="field-input" type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password">
     <button class="login-btn" onclick="doLogin()">Access Command Center →</button>
   </div>
 </div>
 
-<!-- DASHBOARD -->
-<div id="dashboard">
-  <div class="header">
-    <div class="header-left">
+<!-- APP -->
+<div id="app">
+  <div class="sidebar">
+    <div class="sidebar-logo">
       <div class="logo">MidVio</div>
-      <div class="live-badge">
-        <div class="live-dot"></div>
-        Live
-      </div>
+      <div class="sidebar-user" id="sidebar-user">—</div>
+      <div class="live-badge"><div class="live-dot"></div> Live</div>
     </div>
-    <div class="header-right">
-      <div class="timestamp" id="timestamp">—</div>
-      <button class="btn-refresh" onclick="loadLeads()">↻ Refresh</button>
-      <button class="btn-logout" onclick="doLogout()">Logout</button>
+    <nav class="nav">
+      <div class="nav-section">Main</div>
+      <div class="nav-item active" onclick="goTo('pipeline',this)"><span class="nav-icon">📊</span> Pipeline</div>
+      <div class="nav-item" onclick="goTo('leads',this)"><span class="nav-icon">📋</span> Leads</div>
+      <div class="nav-item" onclick="goTo('appointments',this)"><span class="nav-icon">📅</span> Appointments</div>
+      <div class="nav-item" onclick="goTo('voice',this)"><span class="nav-icon">📞</span> Voice Calls</div>
+      <div class="nav-section admin-only">Admin</div>
+      <div class="nav-item admin-only" onclick="goTo('clients',this)"><span class="nav-icon">👥</span> Manage Clients</div>
+      <div class="nav-section">Tools</div>
+      <div class="nav-item" onclick="goTo('inject',this)"><span class="nav-icon">🧪</span> Inject Lead</div>
+      <div class="nav-item" onclick="goTo('status',this)"><span class="nav-icon">⚙️</span> System Status</div>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-sm" onclick="refreshAll()">↻ Refresh</button>
+      <button class="btn-sm danger" onclick="doLogout()">→ Logout</button>
+      <div style="font-size:10px;color:var(--muted);margin-top:8px" id="sidebar-time"></div>
     </div>
   </div>
 
-  <div class="main">
-    <!-- STATS -->
-    <div class="section-label">Pipeline Overview</div>
-    <div class="stats-grid">
-      <div class="stat-card blue">
-        <div class="stat-label">Total Leads</div>
-        <div class="stat-value" id="stat-total">—</div>
-        <div class="stat-sub">All time</div>
-      </div>
-      <div class="stat-card green">
-        <div class="stat-label">Booked</div>
-        <div class="stat-value" id="stat-booked">—</div>
-        <div class="stat-sub" id="stat-rate">0.0% conversion</div>
-      </div>
-      <div class="stat-card yellow">
-        <div class="stat-label">Escalated</div>
-        <div class="stat-value" id="stat-escalated">—</div>
-        <div class="stat-sub">Needs call</div>
-      </div>
-      <div class="stat-card red">
-        <div class="stat-label">Disqualified</div>
-        <div class="stat-value" id="stat-disqualified">—</div>
-        <div class="stat-sub">Not a fit</div>
-      </div>
-    </div>
+  <div class="main-content">
 
-    <!-- FUNNEL + OUTCOMES -->
-    <div class="section-label">Conversion Analysis</div>
-    <div class="two-col">
-      <div class="panel">
-        <div class="panel-title">Conversion Funnel</div>
-        <div id="funnel-content">
-          <div class="funnel-step">
-            <div class="funnel-step-header">
-              <span class="funnel-step-name">Leads Received</span>
-              <span class="funnel-step-count" id="f-received">0 (100%)</span>
-            </div>
-            <div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-received" style="width:100%"></div></div>
-          </div>
-          <div class="funnel-step">
-            <div class="funnel-step-header">
-              <span class="funnel-step-name">Qualified</span>
-              <span class="funnel-step-count" id="f-qualified">0 (0%)</span>
-            </div>
-            <div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-qualified" style="width:0%"></div></div>
-          </div>
-          <div class="funnel-step">
-            <div class="funnel-step-header">
-              <span class="funnel-step-name">Booking Link Sent</span>
-              <span class="funnel-step-count" id="f-booking">0 (0%)</span>
-            </div>
-            <div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-booking" style="width:0%"></div></div>
-          </div>
-          <div class="funnel-step">
-            <div class="funnel-step-header">
-              <span class="funnel-step-name">Confirmed Booked</span>
-              <span class="funnel-step-count" id="f-confirmed">0 (0%)</span>
-            </div>
-            <div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-confirmed" style="width:0%"></div></div>
-          </div>
+    <!-- PIPELINE -->
+    <div class="page active" id="page-pipeline">
+      <div class="page-header">
+        <div><div class="page-title">Live Pipeline</div><div class="page-sub">Source: https://api.midvio.com/leads</div></div>
+        <div style="font-size:11px;color:var(--muted)" id="pipeline-ts">—</div>
+      </div>
+      <div class="section-label">Pipeline Overview</div>
+      <div class="stats-grid">
+        <div class="stat-card blue" style="animation-delay:.1s"><div class="stat-label">Total Leads</div><div class="stat-value" id="s-total">—</div><div class="stat-sub">All time</div></div>
+        <div class="stat-card green" style="animation-delay:.2s"><div class="stat-label">Booked</div><div class="stat-value" id="s-booked">—</div><div class="stat-sub" id="s-rate">0.0% conversion</div></div>
+        <div class="stat-card yellow" style="animation-delay:.3s"><div class="stat-label">Escalated</div><div class="stat-value" id="s-escalated">—</div><div class="stat-sub">Needs call</div></div>
+        <div class="stat-card red" style="animation-delay:.4s"><div class="stat-label">Disqualified</div><div class="stat-value" id="s-disqualified">—</div><div class="stat-sub">Not a fit</div></div>
+        <div class="stat-card purple" style="animation-delay:.5s"><div class="stat-label">Emergency</div><div class="stat-value" id="s-emergency">—</div><div class="stat-sub">High urgency</div></div>
+      </div>
+      <div class="section-label">Conversion Analysis</div>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-title">Conversion Funnel</div>
+          <div class="funnel-step"><div class="funnel-step-header"><span class="funnel-step-name">Leads Received</span><span class="funnel-step-count" id="f-received">0 (100%)</span></div><div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-received" style="width:100%"></div></div></div>
+          <div class="funnel-step"><div class="funnel-step-header"><span class="funnel-step-name">Qualified</span><span class="funnel-step-count" id="f-qualified">0 (0%)</span></div><div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-qualified" style="width:0%"></div></div></div>
+          <div class="funnel-step"><div class="funnel-step-header"><span class="funnel-step-name">Booking Link Sent</span><span class="funnel-step-count" id="f-booking">0 (0%)</span></div><div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-booking" style="width:0%"></div></div></div>
+          <div class="funnel-step"><div class="funnel-step-header"><span class="funnel-step-name">Confirmed Booked</span><span class="funnel-step-count" id="f-confirmed">0 (0%)</span></div><div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-confirmed" style="width:0%"></div></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Outcomes</div>
+          <div class="outcome-item"><div class="outcome-left"><div class="outcome-dot" style="background:var(--green)"></div><span class="outcome-name">Booked</span></div><div class="outcome-count" id="o-booked" style="color:var(--green)">0</div></div>
+          <div class="outcome-item"><div class="outcome-left"><div class="outcome-dot" style="background:var(--yellow)"></div><span class="outcome-name">Escalated</span></div><div class="outcome-count" id="o-escalated" style="color:var(--yellow)">0</div></div>
+          <div class="outcome-item"><div class="outcome-left"><div class="outcome-dot" style="background:var(--red)"></div><span class="outcome-name">Disqualified</span></div><div class="outcome-count" id="o-disqualified" style="color:var(--red)">0</div></div>
+          <div class="outcome-item"><div class="outcome-left"><div class="outcome-dot" style="background:var(--purple)"></div><span class="outcome-name">Emergency</span></div><div class="outcome-count" id="o-emergency" style="color:var(--purple)">0</div></div>
+          <div class="outcome-item"><div class="outcome-left"><div class="outcome-dot" style="background:var(--accent)"></div><span class="outcome-name">In Progress</span></div><div class="outcome-count" id="o-inprogress" style="color:var(--accent)">0</div></div>
         </div>
       </div>
+      <div class="section-label">Recent Activity</div>
+      <div class="table-panel">
+        <div class="table-header"><div class="table-title">Latest Leads</div><div class="table-count" id="pipeline-count">—</div></div>
+        <div id="pipeline-table"><div class="empty-state"><div class="empty-icon">📡</div>Loading...</div></div>
+      </div>
+    </div>
 
-      <div class="panel">
-        <div class="panel-title">Outcomes</div>
-        <div id="outcomes-content">
-          <div class="outcome-item">
-            <div class="outcome-left">
-              <div class="outcome-dot" style="background:var(--green)"></div>
-              <span class="outcome-name">Booked</span>
-            </div>
-            <div class="outcome-count" id="o-booked">0</div>
+    <!-- LEADS -->
+    <div class="page" id="page-leads">
+      <div class="page-header"><div><div class="page-title">Lead Database</div><div class="page-sub">All captured leads</div></div></div>
+      <div class="filters">
+        <input class="form-input filter-input" id="lead-search" placeholder="Search name / phone..." oninput="filterLeads()">
+        <select class="form-select" id="lead-outcome" onchange="filterLeads()" style="width:150px"><option value="">All Outcomes</option><option value="booked">Booked</option><option value="escalated">Escalated</option><option value="disqualified">Disqualified</option></select>
+        <select class="form-select" id="lead-urgency" onchange="filterLeads()" style="width:150px"><option value="">All Urgency</option><option value="emergency">Emergency</option><option value="urgent">Urgent</option><option value="routine">Routine</option></select>
+      </div>
+      <div class="table-panel">
+        <div class="table-header"><div class="table-title">Leads</div><div class="table-count" id="leads-count">—</div></div>
+        <div id="leads-table"><div class="empty-state"><div class="empty-icon">📋</div>Loading...</div></div>
+      </div>
+    </div>
+
+    <!-- APPOINTMENTS -->
+    <div class="page" id="page-appointments">
+      <div class="page-header"><div><div class="page-title">Appointments</div><div class="page-sub">Calendly bookings</div></div></div>
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat-card blue"><div class="stat-label">Total</div><div class="stat-value" id="a-total">—</div></div>
+        <div class="stat-card green"><div class="stat-label">Scheduled</div><div class="stat-value" id="a-scheduled">—</div></div>
+        <div class="stat-card yellow"><div class="stat-label">Completed</div><div class="stat-value" id="a-completed">—</div></div>
+        <div class="stat-card red"><div class="stat-label">Cancelled</div><div class="stat-value" id="a-cancelled">—</div></div>
+      </div>
+      <div class="filters">
+        <input class="form-input filter-input" id="appt-search" placeholder="Search name / phone..." oninput="filterAppts()">
+        <select class="form-select" id="appt-status" onchange="filterAppts()" style="width:150px"><option value="">All Status</option><option value="scheduled">Scheduled</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select>
+      </div>
+      <div class="table-panel">
+        <div class="table-header"><div class="table-title">Appointments</div><div class="table-count" id="appts-count">—</div></div>
+        <div id="appts-table"><div class="empty-state"><div class="empty-icon">📅</div>No appointments yet</div></div>
+      </div>
+    </div>
+
+    <!-- VOICE CALLS -->
+    <div class="page" id="page-voice">
+      <div class="page-header"><div><div class="page-title">Voice AI Calls</div><div class="page-sub">Vapi.ai call log</div></div></div>
+      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-card blue"><div class="stat-label">Total Calls</div><div class="stat-value" id="v-total">—</div></div>
+        <div class="stat-card green"><div class="stat-label">Booked</div><div class="stat-value" id="v-booked">—</div></div>
+        <div class="stat-card yellow"><div class="stat-label">Avg Duration</div><div class="stat-value" id="v-avg">—</div><div class="stat-sub">seconds</div></div>
+      </div>
+      <div class="table-panel">
+        <div class="table-header"><div class="table-title">Call Log</div><div class="table-count" id="voice-count">—</div></div>
+        <div id="voice-table"><div class="empty-state"><div class="empty-icon">📞</div>No voice calls logged yet</div></div>
+      </div>
+    </div>
+
+    <!-- MANAGE CLIENTS (admin) -->
+    <div class="page admin-only" id="page-clients">
+      <div class="page-header"><div><div class="page-title">Manage Clients</div><div class="page-sub">Create and manage client accounts</div></div></div>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-title">Create New Client</div>
+          <div class="form-grid">
+            <div class="form-group"><div class="form-label">Company Name *</div><input class="form-input" id="c-company" placeholder="HVAC Pro LLC"></div>
+            <div class="form-group"><div class="form-label">Username *</div><input class="form-input" id="c-username" placeholder="hvacpro"></div>
+            <div class="form-group"><div class="form-label">Password *</div><input class="form-input" type="password" id="c-password" placeholder="••••••••"></div>
+            <div class="form-group"><div class="form-label">Phone Number</div><input class="form-input" id="c-phone" placeholder="+15165550000"></div>
           </div>
-          <div class="outcome-item">
-            <div class="outcome-left">
-              <div class="outcome-dot" style="background:var(--yellow)"></div>
-              <span class="outcome-name">Escalated</span>
-            </div>
-            <div class="outcome-count" id="o-escalated">0</div>
-          </div>
-          <div class="outcome-item">
-            <div class="outcome-left">
-              <div class="outcome-dot" style="background:var(--red)"></div>
-              <span class="outcome-name">Disqualified</span>
-            </div>
-            <div class="outcome-count" id="o-disqualified">0</div>
-          </div>
-          <div class="outcome-item">
-            <div class="outcome-left">
-              <div class="outcome-dot" style="background:var(--accent)"></div>
-              <span class="outcome-name">In Progress</span>
-            </div>
-            <div class="outcome-count" id="o-inprogress">0</div>
-          </div>
+          <button class="btn-primary" onclick="createClient()">Create Client →</button>
         </div>
+        <div class="panel"><div class="panel-title">Existing Clients</div><div id="clients-list"><div class="empty-state"><div class="empty-icon">👥</div>No clients yet</div></div></div>
       </div>
     </div>
 
-    <!-- LEADS TABLE -->
-    <div class="section-label">Recent Leads</div>
-    <div class="leads-panel">
-      <div class="leads-header">
-        <div class="leads-title">Lead Activity</div>
-        <div class="leads-count" id="leads-count">Loading...</div>
-      </div>
-      <div id="table-container">
-        <div class="loading"><div class="spinner"></div> Connecting to API...</div>
+    <!-- INJECT LEAD -->
+    <div class="page" id="page-inject">
+      <div class="page-header"><div><div class="page-title">Inject Test Lead</div><div class="page-sub">Push a lead directly into the agent pipeline</div></div></div>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-title">Lead Details</div>
+          <div class="form-grid">
+            <div class="form-group"><div class="form-label">Full Name *</div><input class="form-input" id="i-name" value="John Smith"></div>
+            <div class="form-group"><div class="form-label">Phone *</div><input class="form-input" id="i-phone" value="+15165550123"></div>
+            <div class="form-group"><div class="form-label">Email</div><input class="form-input" id="i-email" value="john@example.com"></div>
+            <div class="form-group"><div class="form-label">Address</div><input class="form-input" id="i-address" value="123 Main St, Hempstead NY"></div>
+            <div class="form-group"><div class="form-label">Service Type</div><select class="form-select" id="i-service"><option>AC not cooling</option><option>Heater not working</option><option>Emergency HVAC repair</option><option>Annual maintenance</option><option>Duct cleaning</option><option>New installation</option></select></div>
+            <div class="form-group"><div class="form-label">Urgency</div><select class="form-select" id="i-urgency"><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select></div>
+            <div class="form-group"><div class="form-label">Budget</div><input class="form-input" id="i-budget" value="$200-500"></div>
+            <div class="form-group"><div class="form-label">Custom Note</div><input class="form-input" id="i-custom" placeholder="My AC Account"></div>
+            <div class="form-group full"><div class="form-label">Customer Message</div><textarea class="form-textarea" id="i-message">My AC stopped working and it is very hot inside.</textarea></div>
+          </div>
+          <button class="btn-primary" id="inject-btn" onclick="injectLead()">Run Agent Pipeline →</button>
+        </div>
+        <div class="panel"><div class="panel-title">Pipeline Result</div><div id="inject-result"><div class="empty-state"><div class="empty-icon">⚡</div>Fill out the form and run the pipeline</div></div></div>
       </div>
     </div>
+
+    <!-- SYSTEM STATUS -->
+    <div class="page" id="page-status">
+      <div class="page-header"><div><div class="page-title">System Status</div><div class="page-sub">Integration health check</div></div></div>
+      <div class="two-col">
+        <div class="panel"><div class="panel-title">Integrations</div><div id="status-list"><div class="empty-state"><div class="empty-icon">⚙️</div>Loading...</div></div></div>
+        <div class="panel"><div class="panel-title">API Endpoints</div><div class="code-block" id="endpoints-list">Loading...</div></div>
+      </div>
+      <div class="panel" style="margin-top:16px"><div class="panel-title">Health Check</div><div id="health-result"><div class="empty-state"><div class="empty-icon">🏥</div>Loading...</div></div></div>
+    </div>
+
   </div>
 </div>
 
 <script>
-const API = 'https://api.midvio.com';
-let token = null;
+const API='https://api.midvio.com';
+let currentUser=null,allLeads=[],allAppts=[];
 
-function doLogin() {
-  const u = document.getElementById('username').value;
-  const p = document.getElementById('password').value;
-  const err = document.getElementById('login-error');
-  err.style.display = 'none';
-
-  fetch(`${API}/auth/dashboard`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({username: u, password: p})
+function doLogin(){
+  const u=document.getElementById('l-user').value.trim();
+  const p=document.getElementById('l-pass').value;
+  const err=document.getElementById('login-error');
+  err.style.display='none';
+  fetch(`${API}/auth/dashboard`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+  .then(r=>r.json())
+  .then(data=>{
+    if(data.ok){
+      currentUser={username:u,role:data.role||'client'};
+      sessionStorage.setItem('mv_u',u);sessionStorage.setItem('mv_p',p);sessionStorage.setItem('mv_r',currentUser.role);
+      showApp();
+    }else err.style.display='block';
   })
-  .then(r => r.json())
-  .then(data => {
-    if (data.ok) {
-      token = data.token || 'ok';
-      sessionStorage.setItem('mvt', token);
-      sessionStorage.setItem('mvu', u);
-      sessionStorage.setItem('mvp', p);
-      showDashboard();
-    } else {
-      err.style.display = 'block';
-    }
-  })
-  .catch(() => { err.style.display = 'block'; });
+  .catch(()=>err.style.display='block');
 }
 
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter') doLogin();
-});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin()});
 
-function showDashboard() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('dashboard').style.display = 'block';
+function showApp(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('sidebar-user').textContent=currentUser.username+' ('+currentUser.role+')';
+  if(currentUser.role==='admin'){
+    document.querySelectorAll('.admin-only').forEach(el=>{el.style.display=el.classList.contains('nav-section')?'block':'flex'});
+  }
+  refreshAll();
+  setInterval(refreshAll,30000);
+  setInterval(()=>{document.getElementById('sidebar-time').textContent=new Date().toLocaleTimeString()},1000);
+}
+
+function doLogout(){
+  sessionStorage.clear();currentUser=null;
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('app').style.display='none';
+}
+
+function goTo(page,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  if(el)el.classList.add('active');
+  if(page==='leads')renderLeadsTable(allLeads);
+  if(page==='appointments')loadAppts();
+  if(page==='voice')loadVoice();
+  if(page==='clients')loadClients();
+  if(page==='status')loadStatus();
+}
+
+function getH(){const u=sessionStorage.getItem('mv_u'),p=sessionStorage.getItem('mv_p');return{'Authorization':'Basic '+btoa(u+':'+p)}}
+
+function refreshAll(){
   loadLeads();
-  setInterval(loadLeads, 30000);
+  document.getElementById('pipeline-ts').textContent='Updated '+new Date().toLocaleTimeString();
 }
 
-function doLogout() {
-  sessionStorage.clear();
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('dashboard').style.display = 'none';
-}
-
-function loadLeads() {
-  const u = sessionStorage.getItem('mvu');
-  const p = sessionStorage.getItem('mvp');
-
-  fetch(`${API}/leads`, {
-    headers: {
-      'Authorization': 'Basic ' + btoa(`${u}:${p}`)
-    }
+function loadLeads(){
+  fetch(`${API}/leads`,{headers:getH()})
+  .then(r=>r.json())
+  .then(data=>{
+    allLeads=data.leads||[];
+    updateStats(allLeads);
+    renderPipelineTable(allLeads.slice(0,10));
+    document.getElementById('pipeline-count').textContent=allLeads.length+' total';
   })
-  .then(r => r.json())
-  .then(data => {
-    const leads = data.leads || [];
-    updateStats(leads);
-    renderTable(leads);
-    document.getElementById('timestamp').textContent = 
-      'Updated ' + new Date().toLocaleTimeString();
-  })
-  .catch(() => {
-    document.getElementById('table-container').innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state-icon">⚡</div>
-        <div>No leads yet — system is ready</div>
-      </div>`;
-    document.getElementById('timestamp').textContent = new Date().toLocaleTimeString();
+  .catch(()=>{
     updateStats([]);
+    document.getElementById('pipeline-table').innerHTML='<div class="empty-state"><div class="empty-icon">📡</div>System ready — waiting for first lead</div>';
   });
 }
 
-function updateStats(leads) {
-  const total = leads.length;
-  const booked = leads.filter(l => l.status === 'booked').length;
-  const escalated = leads.filter(l => l.status === 'escalated').length;
-  const disqualified = leads.filter(l => l.status === 'disqualified').length;
-  const qualified = leads.filter(l => l.status === 'qualified').length;
-  const inProgress = total - booked - escalated - disqualified;
-  const rate = total > 0 ? ((booked/total)*100).toFixed(1) : '0.0';
+function updateStats(leads){
+  const total=leads.length;
+  const booked=leads.filter(l=>l.status==='booked'||l.outcome==='booked').length;
+  const esc=leads.filter(l=>l.status==='escalated'||l.outcome==='escalated').length;
+  const disq=leads.filter(l=>l.status==='disqualified'||l.outcome==='disqualified').length;
+  const emerg=leads.filter(l=>l.urgency==='emergency').length;
+  const rate=total>0?((booked/total)*100).toFixed(1):'0.0';
+  const inProg=Math.max(0,total-booked-esc-disq);
+  const qual=booked+esc;
+  const pct=n=>total>0?Math.round((n/total)*100):0;
 
-  document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-booked').textContent = booked;
-  document.getElementById('stat-escalated').textContent = escalated;
-  document.getElementById('stat-disqualified').textContent = disqualified;
-  document.getElementById('stat-rate').textContent = rate + '% conversion';
-
-  document.getElementById('o-booked').textContent = booked;
-  document.getElementById('o-escalated').textContent = escalated;
-  document.getElementById('o-disqualified').textContent = disqualified;
-  document.getElementById('o-inprogress').textContent = Math.max(0, inProgress);
-
-  const pct = n => total > 0 ? Math.round((n/total)*100) : 0;
-  document.getElementById('f-received').textContent = `${total} (100%)`;
-  document.getElementById('f-qualified').textContent = `${qualified+booked} (${pct(qualified+booked)}%)`;
-  document.getElementById('f-booking').textContent = `${booked} (${pct(booked)}%)`;
-  document.getElementById('f-confirmed').textContent = `${booked} (${pct(booked)}%)`;
-
-  setTimeout(() => {
-    document.getElementById('fb-qualified').style.width = pct(qualified+booked) + '%';
-    document.getElementById('fb-booking').style.width = pct(booked) + '%';
-    document.getElementById('fb-confirmed').style.width = pct(booked) + '%';
-  }, 100);
-
-  document.getElementById('leads-count').textContent = total + ' leads total';
+  ['s-total','s-booked','s-escalated','s-disqualified','s-emergency'].forEach((id,i)=>
+    document.getElementById(id).textContent=[total,booked,esc,disq,emerg][i]);
+  document.getElementById('s-rate').textContent=rate+'% conversion';
+  ['o-booked','o-escalated','o-disqualified','o-emergency','o-inprogress'].forEach((id,i)=>
+    document.getElementById(id).textContent=[booked,esc,disq,emerg,inProg][i]);
+  document.getElementById('f-received').textContent=`${total} (100%)`;
+  document.getElementById('f-qualified').textContent=`${qual} (${pct(qual)}%)`;
+  document.getElementById('f-booking').textContent=`${booked} (${pct(booked)}%)`;
+  document.getElementById('f-confirmed').textContent=`${booked} (${pct(booked)}%)`;
+  setTimeout(()=>{
+    document.getElementById('fb-qualified').style.width=pct(qual)+'%';
+    document.getElementById('fb-booking').style.width=pct(booked)+'%';
+    document.getElementById('fb-confirmed').style.width=pct(booked)+'%';
+  },200);
 }
 
-function statusBadge(s) {
-  const map = {
-    booked: 'booked', escalated: 'escalated',
-    disqualified: 'disqualified', qualified: 'qualified'
-  };
-  const cls = map[s] || 'new';
-  return `<span class="status-badge ${cls}">${s || 'new'}</span>`;
+function bdg(v){if(!v)return'<span class="badge new">new</span>';return`<span class="badge ${v}">${v}</span>`}
+
+function renderPipelineTable(leads){
+  if(!leads.length){document.getElementById('pipeline-table').innerHTML='<div class="empty-state"><div class="empty-icon">📡</div>Waiting for first call...</div>';return}
+  const rows=leads.map(l=>`<tr><td>${l.name||'—'}</td><td>${l.phone||'—'}</td><td>${bdg(l.status||l.outcome)}</td><td>${bdg(l.urgency)}</td><td>${l.service_type||'—'}</td><td>${l.created_at?new Date(l.created_at).toLocaleString():'—'}</td></tr>`).join('');
+  document.getElementById('pipeline-table').innerHTML=`<table><thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>Urgency</th><th>Service</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-function renderTable(leads) {
-  if (!leads.length) {
-    document.getElementById('table-container').innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state-icon">📡</div>
-        <div>Waiting for first call...</div>
-      </div>`;
-    return;
-  }
+function renderLeadsTable(leads){
+  const s=document.getElementById('lead-search').value.toLowerCase();
+  const o=document.getElementById('lead-outcome').value;
+  const u=document.getElementById('lead-urgency').value;
+  let f=leads;
+  if(s)f=f.filter(l=>(l.name||'').toLowerCase().includes(s)||(l.phone||'').includes(s));
+  if(o)f=f.filter(l=>(l.status||l.outcome)===o);
+  if(u)f=f.filter(l=>l.urgency===u);
+  document.getElementById('leads-count').textContent=f.length+' records';
+  if(!f.length){document.getElementById('leads-table').innerHTML='<div class="empty-state"><div class="empty-icon">📋</div>No leads found</div>';return}
+  const rows=f.map(l=>`<tr><td>${l.name||'—'}</td><td>${l.phone||'—'}</td><td>${l.email||'—'}</td><td>${l.service_type||'—'}</td><td>${bdg(l.urgency)}</td><td>${bdg(l.status||l.outcome)}</td><td>${l.followup_count||0}</td><td>${l.created_at?new Date(l.created_at).toLocaleDateString():'—'}</td></tr>`).join('');
+  document.getElementById('leads-table').innerHTML=`<table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Service</th><th>Urgency</th><th>Outcome</th><th>Followups</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function filterLeads(){renderLeadsTable(allLeads)}
 
-  const rows = leads.map(l => `
-    <tr>
-      <td>${l.name || '—'}</td>
-      <td>${l.phone || '—'}</td>
-      <td>${statusBadge(l.status)}</td>
-      <td>${l.created_at ? new Date(l.created_at).toLocaleString() : '—'}</td>
-    </tr>`).join('');
-
-  document.getElementById('table-container').innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Phone</th>
-          <th>Status</th>
-          <th>Date</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+function loadAppts(){
+  fetch(`${API}/appointments`,{headers:getH()})
+  .then(r=>r.json())
+  .then(data=>{
+    allAppts=data.appointments||[];
+    const total=allAppts.length,sched=allAppts.filter(a=>a.status==='scheduled').length,comp=allAppts.filter(a=>a.status==='completed').length,canc=allAppts.filter(a=>a.status==='cancelled').length;
+    ['a-total','a-scheduled','a-completed','a-cancelled'].forEach((id,i)=>document.getElementById(id).textContent=[total,sched,comp,canc][i]);
+    renderApptsTable(allAppts);
+  })
+  .catch(()=>{
+    ['a-total','a-scheduled','a-completed','a-cancelled'].forEach(id=>document.getElementById(id).textContent='0');
+    document.getElementById('appts-table').innerHTML='<div class="empty-state"><div class="empty-icon">📅</div>No appointments yet</div>';
+  });
 }
 
-// Auto-login if session exists
-if (sessionStorage.getItem('mvt')) showDashboard();
+function renderApptsTable(appts){
+  const s=document.getElementById('appt-search').value.toLowerCase();
+  const st=document.getElementById('appt-status').value;
+  let f=appts;
+  if(s)f=f.filter(a=>(a.lead_name||'').toLowerCase().includes(s)||(a.phone||'').includes(s));
+  if(st)f=f.filter(a=>a.status===st);
+  document.getElementById('appts-count').textContent=f.length+' appointments';
+  if(!f.length){document.getElementById('appts-table').innerHTML='<div class="empty-state"><div class="empty-icon">📅</div>No appointments found</div>';return}
+  const rows=f.map(a=>`<tr><td>${a.lead_name||'—'}</td><td>${a.phone||'—'}</td><td>${a.email||'—'}</td><td>${a.service_type||'—'}</td><td>${a.scheduled_at?new Date(a.scheduled_at).toLocaleString():'—'}</td><td>${bdg(a.status)}</td><td>${a.notes||'—'}</td></tr>`).join('');
+  document.getElementById('appts-table').innerHTML=`<table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Service</th><th>Scheduled</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function filterAppts(){renderApptsTable(allAppts)}
+
+function loadVoice(){
+  fetch(`${API}/voice-calls`,{headers:getH()})
+  .then(r=>r.json())
+  .then(data=>{
+    const calls=data.calls||[];
+    const booked=calls.filter(c=>c.outcome==='booked').length;
+    const avg=calls.length>0?Math.round(calls.reduce((s,c)=>s+(c.duration_sec||0),0)/calls.length):0;
+    document.getElementById('v-total').textContent=calls.length;
+    document.getElementById('v-booked').textContent=booked;
+    document.getElementById('v-avg').textContent=avg;
+    document.getElementById('voice-count').textContent=calls.length+' calls';
+    if(!calls.length){document.getElementById('voice-table').innerHTML='<div class="empty-state"><div class="empty-icon">📞</div>No voice calls yet</div>';return}
+    const rows=calls.map(c=>`<tr><td>${c.lead_name||'—'}</td><td>${c.phone||'—'}</td><td>${c.direction||'—'}</td><td>${c.duration_sec||0}s</td><td>${bdg(c.outcome)}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.transcript_preview||'—'}</td><td>${c.created_at?new Date(c.created_at).toLocaleString():'—'}</td></tr>`).join('');
+    document.getElementById('voice-table').innerHTML=`<table><thead><tr><th>Name</th><th>Phone</th><th>Direction</th><th>Duration</th><th>Outcome</th><th>Preview</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table>`;
+  })
+  .catch(()=>{['v-total','v-booked','v-avg'].forEach(id=>document.getElementById(id).textContent='0');document.getElementById('voice-table').innerHTML='<div class="empty-state"><div class="empty-icon">📞</div>No voice calls yet</div>'});
+}
+
+function loadClients(){
+  fetch(`${API}/clients`,{headers:getH()})
+  .then(r=>r.json())
+  .then(data=>{
+    const clients=data.clients||[];
+    if(!clients.length){document.getElementById('clients-list').innerHTML='<div class="empty-state"><div class="empty-icon">👥</div>No clients yet</div>';return}
+    document.getElementById('clients-list').innerHTML=clients.map(c=>`<div class="outcome-item"><div><div style="font-size:13px;font-weight:600">${c.company_name}</div><div style="font-size:10px;color:var(--muted)">${c.username} · ${c.phone_number||'—'}</div></div><span class="badge ${c.active?'booked':'disqualified'}">${c.active?'active':'inactive'}</span></div>`).join('');
+  })
+  .catch(()=>document.getElementById('clients-list').innerHTML='<div class="empty-state"><div class="empty-icon">👥</div>No clients yet</div>');
+}
+
+function createClient(){
+  const company=document.getElementById('c-company').value.trim();
+  const username=document.getElementById('c-username').value.trim();
+  const password=document.getElementById('c-password').value;
+  const phone=document.getElementById('c-phone').value.trim();
+  if(!company||!username||!password){showNotif('Company, username, and password required','error');return}
+  fetch(`${API}/clients`,{method:'POST',headers:{...getH(),'Content-Type':'application/json'},body:JSON.stringify({company_name:company,username,password,phone_number:phone,active:true})})
+  .then(r=>r.json())
+  .then(data=>{if(data.ok){showNotif('Client created!','success');loadClients()}else showNotif(data.detail||'Failed','error')})
+  .catch(()=>showNotif('Error creating client','error'));
+}
+
+function injectLead(){
+  const name=document.getElementById('i-name').value.trim();
+  const phone=document.getElementById('i-phone').value.trim();
+  if(!name||!phone){showNotif('Name and phone required','error');return}
+  const btn=document.getElementById('inject-btn');
+  btn.innerHTML='<span class="spinner"></span>Running pipeline...';btn.disabled=true;
+  const payload={name,phone,email:document.getElementById('i-email').value,address:document.getElementById('i-address').value,service_type:document.getElementById('i-service').value,urgency:document.getElementById('i-urgency').value,budget:document.getElementById('i-budget').value,message:document.getElementById('i-message').value,source:'dashboard_inject'};
+  fetch(`${API}/lead/manual`,{method:'POST',headers:{...getH(),'Content-Type':'application/json'},body:JSON.stringify(payload)})
+  .then(r=>r.json())
+  .then(data=>{
+    btn.textContent='Run Agent Pipeline →';btn.disabled=false;
+    document.getElementById('inject-result').innerHTML=`<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:4px;padding:20px"><div style="color:var(--green);font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:12px">✅ Pipeline Complete</div><div style="font-size:12px;line-height:1.8;color:var(--muted)"><div>Outcome: <span style="color:var(--text)">${data.outcome||'unknown'}</span></div><div>Qualified: <span style="color:var(--text)">${data.is_qualified||false}</span></div>${data.booking_url?`<div>Booking: <a href="${data.booking_url}" style="color:var(--accent)" target="_blank">${data.booking_url}</a></div>`:''}</div></div>`;
+    showNotif('Pipeline complete!','success');loadLeads();
+  })
+  .catch(err=>{btn.textContent='Run Agent Pipeline →';btn.disabled=false;document.getElementById('inject-result').innerHTML=`<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:4px;padding:20px;color:#fca5a5;font-size:12px">❌ Error: ${err.message}</div>`});
+}
+
+function loadStatus(){
+  fetch(`${API}/health`,{headers:getH()})
+  .then(r=>r.json())
+  .then(data=>{
+    document.getElementById('health-result').innerHTML=`<div class="stats-grid" style="grid-template-columns:repeat(4,1fr)"><div class="stat-card ${data.status==='ok'?'green':'red'}"><div class="stat-label">Status</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:${data.status==='ok'?'var(--green)':'var(--red)'}">${(data.status||'').toUpperCase()}</div></div><div class="stat-card blue"><div class="stat-label">Database</div><div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800">${data.database||'—'}</div></div><div class="stat-card yellow"><div class="stat-label">Scheduler</div><div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800">${data.scheduler||'—'}</div></div><div class="stat-card purple"><div class="stat-label">Version</div><div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800">${data.version||'—'}</div></div></div>`;
+    const integs=[{name:'Anthropic AI',k:'anthropic'},{name:'Twilio',k:'twilio'},{name:'SendGrid',k:'sendgrid'},{name:'Calendly',k:'calendly'},{name:'HubSpot',k:'hubspot'},{name:'Google Calendar',k:'google_calendar'},{name:'Gmail',k:'gmail'},{name:'Vapi.ai',k:'vapi'}];
+    document.getElementById('status-list').innerHTML=integs.map(i=>`<div class="status-row"><span class="status-name">${i.name}</span><span class="badge ${data[i.k]!==false?'ok':'missing'}">${data[i.k]!==false?'✅ OK':'❌ Missing'}</span></div>`).join('');
+    document.getElementById('endpoints-list').textContent=`GET  ${API}/health\nPOST ${API}/twilio/inbound\nPOST ${API}/twilio/missed-call\nPOST ${API}/twilio/sms-reply\nPOST ${API}/booking/calendly-webhook\nPOST ${API}/lead/web-form\nPOST ${API}/lead/sms-inbound\nPOST ${API}/lead/manual\nPOST ${API}/vapi/webhook\nPOST ${API}/vapi/outbound`;
+  })
+  .catch(()=>{document.getElementById('health-result').innerHTML='<div class="empty-state"><div class="empty-icon">⚠️</div>Could not reach API</div>';document.getElementById('status-list').innerHTML='<div class="empty-state">Could not load status</div>';document.getElementById('endpoints-list').textContent=`${API}/...`});
+}
+
+function showNotif(msg,type){const n=document.getElementById('notif');n.textContent=msg;n.className=`notif ${type}`;n.style.display='block';setTimeout(()=>n.style.display='none',3000)}
+
+if(sessionStorage.getItem('mv_u')){currentUser={username:sessionStorage.getItem('mv_u'),role:sessionStorage.getItem('mv_r')||'client'};showApp()}
 </script>
 </body>
 </html>
