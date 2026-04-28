@@ -226,14 +226,45 @@ async def health():
 @app.get("/leads")
 async def get_leads():
     try:
+        from db.postgres import get_conn
         with get_conn() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT id, phone, status, created_at, name FROM leads ORDER BY created_at DESC")
                 rows = cursor.fetchall()
                 return {"leads": [{"id":r[0],"phone":r[1],"status":r[2],"created_at":str(r[3]),"name":r[4]} for r in rows]}
     except Exception as e:
-        return {"leads":[], "error":str(e)}
+        return {"leads": [], "error": str(e)}
 
+
+@app.get("/appointments")
+async def get_appointments(client_id: int = None):
+    try:
+        from db.postgres import get_conn
+        with get_conn() as conn:
+            with conn.cursor() as cursor:
+                if client_id:
+                    cursor.execute("SELECT id, name, address, appointment_time, appointment_date, service_type, status FROM appointments WHERE client_id = %s ORDER BY created_at DESC", (client_id,))
+                else:
+                    cursor.execute("SELECT id, name, address, appointment_time, appointment_date, service_type, status FROM appointments ORDER BY created_at DESC")
+                rows = cursor.fetchall()
+                return {"appointments": [{"id":r[0],"name":r[1],"address":r[2],"time":r[3],"date":r[4],"type":r[5],"status":r[6]} for r in rows]}
+    except Exception as e:
+        return {"appointments": [], "error": str(e)}
+
+@app.get("/voice-calls")
+async def get_voice_calls(client_id: int = None):
+    try:
+        from db.postgres import get_conn
+        with get_conn() as conn:
+            with conn.cursor() as cursor:
+                if client_id:
+                    cursor.execute("SELECT id, caller_name, phone, call_type, duration, status, created_at FROM voice_calls WHERE client_id = %s ORDER BY created_at DESC", (client_id,))
+                else:
+                    cursor.execute("SELECT id, caller_name, phone, call_type, duration, status, created_at FROM voice_calls ORDER BY created_at DESC")
+                rows = cursor.fetchall()
+                return {"calls": [{"id":r[0],"name":r[1],"phone":r[2],"type":r[3],"duration":r[4],"status":r[5],"date":str(r[6])} for r in rows]}
+    except Exception as e:
+        return {"calls": [], "error": str(e)}
 
 @app.post("/clients")
 async def create_client(data: dict):
