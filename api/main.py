@@ -122,6 +122,10 @@ async def serve_root():
 @app.get("/dashboard")
 async def serve_admin_dashboard():
     return FileResponse("static/dashboard.html")
+    
+@app.get("/client")
+async def serve_client_dashboard():
+    return FileResponse("static/client-dashboard.html")
 
 app.add_middleware(
     CORSMiddleware,
@@ -275,3 +279,4 @@ async def client_login(data: dict):
                 return {"ok": False, "detail": "Invalid credentials"}
     except Exception as e:
         return {"ok": False, "detail": str(e)}
+        
