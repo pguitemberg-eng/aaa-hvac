@@ -161,7 +161,7 @@ async def dashboard_login(req: DashboardLoginRequest):
             detail="Dashboard authentication is not configured on the server.",
         )
     if req.username == expected_user and req.password == expected_pass:
-        return {"ok": True}
+        return {"ok": True, "role": "admin"}
     raise HTTPException(status_code=401, detail="Invalid username or password.")
 
 
