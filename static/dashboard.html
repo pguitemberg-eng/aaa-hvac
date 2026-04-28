@@ -1,293 +1,862 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MidVio Admin Dashboard</title>
-  <style>
-    :root {
-      --bg: #0b1020;
-      --card: #141b34;
-      --muted: #a7b1d3;
-      --text: #eef2ff;
-      --border: #263054;
-      --accent: #5b8cff;
-      --booked: #22c55e;
-      --escalated: #f59e0b;
-      --disqualified: #ef4444;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Inter, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      padding: 28px;
-    }
-    h1 { margin: 0 0 8px; font-size: 28px; }
-    .sub { margin: 0 0 24px; color: var(--muted); }
-    .hidden { display: none !important; }
-    #loginScreen {
-      max-width: 400px;
-      margin: 48px auto;
-    }
-    #loginScreen .card {
-      padding: 24px;
-    }
-    #loginScreen label {
-      display: block;
-      color: var(--muted);
-      font-size: 13px;
-      margin-bottom: 6px;
-    }
-    #loginScreen input {
-      width: 100%;
-      padding: 10px 12px;
-      margin-bottom: 14px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: #0d1528;
-      color: var(--text);
-      font-size: 15px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-      margin-bottom: 20px;
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
-    }
-    .label { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
-    .value { font-size: 34px; font-weight: 700; line-height: 1; }
-    .total .value { color: var(--accent); }
-    .booked .value { color: var(--booked); }
-    .escalated .value { color: var(--escalated); }
-    .disqualified .value { color: var(--disqualified); }
-    .meta { color: var(--muted); font-size: 13px; }
-    .error {
-      display: none;
-      margin-top: 14px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid #5c1e1e;
-      background: #2b1111;
-      color: #fecaca;
-      font-size: 13px;
-    }
-    .login-error {
-      display: none;
-      margin-bottom: 14px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid #5c1e1e;
-      background: #2b1111;
-      color: #fecaca;
-      font-size: 13px;
-    }
-    button {
-      background: var(--accent);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 8px 12px;
-      cursor: pointer;
-      font-weight: 600;
-    }
-    #loginBtn { width: 100%; padding: 12px; font-size: 15px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MidVio — HVAC Command Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050810;
+    --surface: #0a0f1e;
+    --surface2: #0f1628;
+    --border: rgba(99,179,237,0.12);
+    --accent: #3b82f6;
+    --accent2: #06b6d4;
+    --green: #10b981;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --purple: #8b5cf6;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --glow: rgba(59,130,246,0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* BACKGROUND GRID */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* LOGIN SCREEN */
+  #login-screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    background: var(--bg);
+  }
+
+  .login-box {
+    width: 380px;
+    padding: 48px 40px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .login-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .login-logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #fff, var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .login-sub {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 36px;
+  }
+
+  .login-error {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    color: #fca5a5;
+    padding: 10px 14px;
+    border-radius: 3px;
+    font-size: 12px;
+    margin-bottom: 16px;
+    display: none;
+  }
+
+  .field-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .field-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    border-radius: 3px;
+    margin-bottom: 20px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .field-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+
+  .login-btn {
+    width: 100%;
+    padding: 13px;
+    background: var(--accent);
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .login-btn:hover { background: #2563eb; transform: translateY(-1px); }
+
+  /* DASHBOARD */
+  #dashboard { display: none; position: relative; z-index: 1; }
+
+  /* HEADER */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10,15,30,0.8);
+    backdrop-filter: blur(20px);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fff, var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    color: var(--green);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .live-dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .timestamp {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .btn-refresh {
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+  }
+
+  .btn-refresh:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .btn-logout {
+    padding: 8px 16px;
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.2);
+    color: #fca5a5;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+  }
+
+  .btn-logout:hover { background: rgba(239,68,68,0.2); }
+
+  /* MAIN CONTENT */
+  .main {
+    padding: 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* SECTION LABEL */
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* STAT CARDS */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, border-color 0.2s;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(99,179,237,0.25);
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .stat-card:nth-child(1) { animation-delay: 0.1s; }
+  .stat-card:nth-child(2) { animation-delay: 0.2s; }
+  .stat-card:nth-child(3) { animation-delay: 0.3s; }
+  .stat-card:nth-child(4) { animation-delay: 0.4s; }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .stat-card.blue::before { background: linear-gradient(90deg, var(--accent), transparent); }
+  .stat-card.green::before { background: linear-gradient(90deg, var(--green), transparent); }
+  .stat-card.yellow::before { background: linear-gradient(90deg, var(--yellow), transparent); }
+  .stat-card.red::before { background: linear-gradient(90deg, var(--red), transparent); }
+
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 48px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .stat-card.blue .stat-value { color: var(--accent); }
+  .stat-card.green .stat-value { color: var(--green); }
+  .stat-card.yellow .stat-value { color: var(--yellow); }
+  .stat-card.red .stat-value { color: var(--red); }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* TWO COLUMN */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  /* FUNNEL */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px;
+    animation: fadeUp 0.5s ease 0.5s both;
+  }
+
+  .panel-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: #fff;
+  }
+
+  .funnel-step {
+    margin-bottom: 16px;
+  }
+
+  .funnel-step-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .funnel-step-name {
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .funnel-step-count {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .funnel-bar-bg {
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .funnel-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1s ease;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+  }
+
+  /* OUTCOMES */
+  .outcome-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .outcome-item:last-child { border-bottom: none; }
+
+  .outcome-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+
+  .outcome-left {
+    display: flex;
+    align-items: center;
+  }
+
+  .outcome-name { font-size: 12px; }
+  .outcome-count {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  /* LEADS TABLE */
+  .leads-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    animation: fadeUp 0.5s ease 0.6s both;
+  }
+
+  .leads-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .leads-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .leads-count {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 12px 24px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(59,130,246,0.04); }
+
+  tbody td {
+    padding: 14px 24px;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .status-badge.new { background: rgba(59,130,246,0.1); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); }
+  .status-badge.booked { background: rgba(16,185,129,0.1); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); }
+  .status-badge.escalated { background: rgba(245,158,11,0.1); color: #fcd34d; border: 1px solid rgba(245,158,11,0.2); }
+  .status-badge.disqualified { background: rgba(239,68,68,0.1); color: #fca5a5; border: 1px solid rgba(239,68,68,0.2); }
+  .status-badge.qualified { background: rgba(139,92,246,0.1); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.2); }
+
+  .empty-state {
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+
+  .empty-state-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+    opacity: 0.3;
+  }
+
+  /* LOADING */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 900px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col { grid-template-columns: 1fr; }
+    .main { padding: 16px; }
+  }
+</style>
 </head>
 <body>
-  <div id="loginScreen">
-    <h1>Admin login</h1>
-    <p class="sub">Sign in to view the Live Pipeline (credentials are checked on the server).</p>
-    <div class="card">
-      <div id="loginError" class="login-error"></div>
-      <form id="loginForm">
-        <label for="username">Username</label>
-        <input id="username" name="username" type="text" autocomplete="username" required>
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required>
-        <button type="submit" id="loginBtn">Sign in</button>
-      </form>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">MidVio</div>
+    <div class="login-sub">HVAC Command Center</div>
+    <div class="login-error" id="login-error">Invalid credentials. Try again.</div>
+    <div class="field-label">Username</div>
+    <input class="field-input" type="text" id="username" placeholder="admin" autocomplete="username">
+    <div class="field-label">Password</div>
+    <input class="field-input" type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+    <button class="login-btn" onclick="doLogin()">Access Command Center →</button>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">MidVio</div>
+      <div class="live-badge">
+        <div class="live-dot"></div>
+        Live
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="timestamp" id="timestamp">—</div>
+      <button class="btn-refresh" onclick="loadLeads()">↻ Refresh</button>
+      <button class="btn-logout" onclick="doLogout()">Logout</button>
     </div>
   </div>
 
-  <div id="pipelineApp" class="hidden">
-    <h1>Live Pipeline</h1>
-    <p class="sub">Source: <code id="leadsSourceLabel">https://api.midvio.com/leads</code></p>
-
-    <div class="grid">
-      <div class="card total">
-        <div class="label">Total Leads</div>
-        <div class="value" id="total">0</div>
+  <div class="main">
+    <!-- STATS -->
+    <div class="section-label">Pipeline Overview</div>
+    <div class="stats-grid">
+      <div class="stat-card blue">
+        <div class="stat-label">Total Leads</div>
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-sub">All time</div>
       </div>
-      <div class="card booked">
-        <div class="label">Booked</div>
-        <div class="value" id="booked">0</div>
+      <div class="stat-card green">
+        <div class="stat-label">Booked</div>
+        <div class="stat-value" id="stat-booked">—</div>
+        <div class="stat-sub" id="stat-rate">0.0% conversion</div>
       </div>
-      <div class="card escalated">
-        <div class="label">Escalated</div>
-        <div class="value" id="escalated">0</div>
+      <div class="stat-card yellow">
+        <div class="stat-label">Escalated</div>
+        <div class="stat-value" id="stat-escalated">—</div>
+        <div class="stat-sub">Needs call</div>
       </div>
-      <div class="card disqualified">
-        <div class="label">Disqualified</div>
-        <div class="value" id="disqualified">0</div>
+      <div class="stat-card red">
+        <div class="stat-label">Disqualified</div>
+        <div class="stat-value" id="stat-disqualified">—</div>
+        <div class="stat-sub">Not a fit</div>
       </div>
     </div>
 
-    <p class="meta" id="updatedAt">Last updated: never</p>
-    <button id="refreshBtn" type="button">Refresh</button>
-    <button id="logoutBtn" type="button" style="margin-left:8px; background: transparent; border: 1px solid var(--border);">Log out</button>
-    <div id="error" class="error"></div>
+    <!-- FUNNEL + OUTCOMES -->
+    <div class="section-label">Conversion Analysis</div>
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-title">Conversion Funnel</div>
+        <div id="funnel-content">
+          <div class="funnel-step">
+            <div class="funnel-step-header">
+              <span class="funnel-step-name">Leads Received</span>
+              <span class="funnel-step-count" id="f-received">0 (100%)</span>
+            </div>
+            <div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-received" style="width:100%"></div></div>
+          </div>
+          <div class="funnel-step">
+            <div class="funnel-step-header">
+              <span class="funnel-step-name">Qualified</span>
+              <span class="funnel-step-count" id="f-qualified">0 (0%)</span>
+            </div>
+            <div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-qualified" style="width:0%"></div></div>
+          </div>
+          <div class="funnel-step">
+            <div class="funnel-step-header">
+              <span class="funnel-step-name">Booking Link Sent</span>
+              <span class="funnel-step-count" id="f-booking">0 (0%)</span>
+            </div>
+            <div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-booking" style="width:0%"></div></div>
+          </div>
+          <div class="funnel-step">
+            <div class="funnel-step-header">
+              <span class="funnel-step-name">Confirmed Booked</span>
+              <span class="funnel-step-count" id="f-confirmed">0 (0%)</span>
+            </div>
+            <div class="funnel-bar-bg"><div class="funnel-bar-fill" id="fb-confirmed" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Outcomes</div>
+        <div id="outcomes-content">
+          <div class="outcome-item">
+            <div class="outcome-left">
+              <div class="outcome-dot" style="background:var(--green)"></div>
+              <span class="outcome-name">Booked</span>
+            </div>
+            <div class="outcome-count" id="o-booked">0</div>
+          </div>
+          <div class="outcome-item">
+            <div class="outcome-left">
+              <div class="outcome-dot" style="background:var(--yellow)"></div>
+              <span class="outcome-name">Escalated</span>
+            </div>
+            <div class="outcome-count" id="o-escalated">0</div>
+          </div>
+          <div class="outcome-item">
+            <div class="outcome-left">
+              <div class="outcome-dot" style="background:var(--red)"></div>
+              <span class="outcome-name">Disqualified</span>
+            </div>
+            <div class="outcome-count" id="o-disqualified">0</div>
+          </div>
+          <div class="outcome-item">
+            <div class="outcome-left">
+              <div class="outcome-dot" style="background:var(--accent)"></div>
+              <span class="outcome-name">In Progress</span>
+            </div>
+            <div class="outcome-count" id="o-inprogress">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEADS TABLE -->
+    <div class="section-label">Recent Leads</div>
+    <div class="leads-panel">
+      <div class="leads-header">
+        <div class="leads-title">Lead Activity</div>
+        <div class="leads-count" id="leads-count">Loading...</div>
+      </div>
+      <div id="table-container">
+        <div class="loading"><div class="spinner"></div> Connecting to API...</div>
+      </div>
+    </div>
   </div>
+</div>
 
-  <script>
-    const API_BASE =
-      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-        ? `${window.location.protocol}//${window.location.host}`
-        : "https://api.midvio.com";
-    const leadsUrl = `${API_BASE}/leads`;
-    const authUrl = `${API_BASE}/auth/dashboard`;
-    const AUTH_KEY = "midvio_dashboard_session";
+<script>
+const API = 'https://api.midvio.com';
+let token = null;
 
-    document.getElementById("leadsSourceLabel").textContent = leadsUrl;
+function doLogin() {
+  const u = document.getElementById('username').value;
+  const p = document.getElementById('password').value;
+  const err = document.getElementById('login-error');
+  err.style.display = 'none';
 
-    const el = {
-      loginScreen: document.getElementById("loginScreen"),
-      pipelineApp: document.getElementById("pipelineApp"),
-      loginForm: document.getElementById("loginForm"),
-      loginError: document.getElementById("loginError"),
-      total: document.getElementById("total"),
-      booked: document.getElementById("booked"),
-      escalated: document.getElementById("escalated"),
-      disqualified: document.getElementById("disqualified"),
-      updatedAt: document.getElementById("updatedAt"),
-      error: document.getElementById("error"),
-      refreshBtn: document.getElementById("refreshBtn"),
-      logoutBtn: document.getElementById("logoutBtn"),
-    };
-
-    function showLogin() {
-      el.loginScreen.classList.remove("hidden");
-      el.pipelineApp.classList.add("hidden");
-    }
-
-    function showPipeline() {
-      el.loginScreen.classList.add("hidden");
-      el.pipelineApp.classList.remove("hidden");
-    }
-
-    function setLoginError(msg) {
-      if (!msg) {
-        el.loginError.style.display = "none";
-        el.loginError.textContent = "";
-        return;
-      }
-      el.loginError.style.display = "block";
-      el.loginError.textContent = msg;
-    }
-
-    function normalizeLeads(payload) {
-      if (Array.isArray(payload)) return payload;
-      if (Array.isArray(payload?.leads)) return payload.leads;
-      if (Array.isArray(payload?.data)) return payload.data;
-      return [];
-    }
-
-    function getOutcome(lead) {
-      return String(
-        lead?.outcome ?? lead?.status ?? lead?.pipeline_status ?? ""
-      ).toLowerCase();
-    }
-
-    function updateStats(leads) {
-      const total = leads.length;
-      const booked = leads.filter((l) => getOutcome(l) === "booked").length;
-      const escalated = leads.filter((l) => getOutcome(l) === "escalated").length;
-      const disqualified = leads.filter((l) => getOutcome(l) === "disqualified").length;
-
-      el.total.textContent = String(total);
-      el.booked.textContent = String(booked);
-      el.escalated.textContent = String(escalated);
-      el.disqualified.textContent = String(disqualified);
-      el.updatedAt.textContent = `Last updated: ${new Date().toLocaleString()}`;
-    }
-
-    function setError(message) {
-      el.error.style.display = message ? "block" : "none";
-      el.error.textContent = message || "";
-    }
-
-    let refreshTimer = null;
-
-    async function loadLeads() {
-      setError("");
-      try {
-        const res = await fetch(leadsUrl, { headers: { Accept: "application/json" } });
-        if (!res.ok) throw new Error(`Request failed (${res.status})`);
-        const payload = await res.json();
-        const leads = normalizeLeads(payload);
-        updateStats(leads);
-      } catch (err) {
-        setError(`Unable to load leads from ${leadsUrl}: ${err.message}`);
-      }
-    }
-
-    el.refreshBtn.addEventListener("click", loadLeads);
-
-    el.loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      setLoginError("");
-      const username = document.getElementById("username").value.trim();
-      const password = document.getElementById("password").value;
-      try {
-        const res = await fetch(authUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ username, password }),
-        });
-        const data = res.ok ? await res.json().catch(() => ({})) : await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const msg = data.detail || data.message || "Login failed";
-          setLoginError(typeof msg === "string" ? msg : "Login failed");
-          return;
-        }
-        if (data.ok) {
-          sessionStorage.setItem(AUTH_KEY, "1");
-          showPipeline();
-          if (refreshTimer) clearInterval(refreshTimer);
-          loadLeads();
-          refreshTimer = setInterval(loadLeads, 30000);
-        } else {
-          setLoginError("Login failed");
-        }
-      } catch (err) {
-        setLoginError(err.message || "Network error");
-      }
-    });
-
-    el.logoutBtn.addEventListener("click", () => {
-      sessionStorage.removeItem(AUTH_KEY);
-      if (refreshTimer) {
-        clearInterval(refreshTimer);
-        refreshTimer = null;
-      }
-      document.getElementById("password").value = "";
-      showLogin();
-    });
-
-    if (sessionStorage.getItem(AUTH_KEY) === "1") {
-      showPipeline();
-      loadLeads();
-      refreshTimer = setInterval(loadLeads, 30000);
+  fetch(`${API}/auth/dashboard`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username: u, password: p})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      token = data.token || 'ok';
+      sessionStorage.setItem('mvt', token);
+      sessionStorage.setItem('mvu', u);
+      sessionStorage.setItem('mvp', p);
+      showDashboard();
     } else {
-      showLogin();
+      err.style.display = 'block';
     }
-  </script>
+  })
+  .catch(() => { err.style.display = 'block'; });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+function showDashboard() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  loadLeads();
+  setInterval(loadLeads, 30000);
+}
+
+function doLogout() {
+  sessionStorage.clear();
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('dashboard').style.display = 'none';
+}
+
+function loadLeads() {
+  const u = sessionStorage.getItem('mvu');
+  const p = sessionStorage.getItem('mvp');
+
+  fetch(`${API}/leads`, {
+    headers: {
+      'Authorization': 'Basic ' + btoa(`${u}:${p}`)
+    }
+  })
+  .then(r => r.json())
+  .then(data => {
+    const leads = data.leads || [];
+    updateStats(leads);
+    renderTable(leads);
+    document.getElementById('timestamp').textContent = 
+      'Updated ' + new Date().toLocaleTimeString();
+  })
+  .catch(() => {
+    document.getElementById('table-container').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">⚡</div>
+        <div>No leads yet — system is ready</div>
+      </div>`;
+    document.getElementById('timestamp').textContent = new Date().toLocaleTimeString();
+    updateStats([]);
+  });
+}
+
+function updateStats(leads) {
+  const total = leads.length;
+  const booked = leads.filter(l => l.status === 'booked').length;
+  const escalated = leads.filter(l => l.status === 'escalated').length;
+  const disqualified = leads.filter(l => l.status === 'disqualified').length;
+  const qualified = leads.filter(l => l.status === 'qualified').length;
+  const inProgress = total - booked - escalated - disqualified;
+  const rate = total > 0 ? ((booked/total)*100).toFixed(1) : '0.0';
+
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-booked').textContent = booked;
+  document.getElementById('stat-escalated').textContent = escalated;
+  document.getElementById('stat-disqualified').textContent = disqualified;
+  document.getElementById('stat-rate').textContent = rate + '% conversion';
+
+  document.getElementById('o-booked').textContent = booked;
+  document.getElementById('o-escalated').textContent = escalated;
+  document.getElementById('o-disqualified').textContent = disqualified;
+  document.getElementById('o-inprogress').textContent = Math.max(0, inProgress);
+
+  const pct = n => total > 0 ? Math.round((n/total)*100) : 0;
+  document.getElementById('f-received').textContent = `${total} (100%)`;
+  document.getElementById('f-qualified').textContent = `${qualified+booked} (${pct(qualified+booked)}%)`;
+  document.getElementById('f-booking').textContent = `${booked} (${pct(booked)}%)`;
+  document.getElementById('f-confirmed').textContent = `${booked} (${pct(booked)}%)`;
+
+  setTimeout(() => {
+    document.getElementById('fb-qualified').style.width = pct(qualified+booked) + '%';
+    document.getElementById('fb-booking').style.width = pct(booked) + '%';
+    document.getElementById('fb-confirmed').style.width = pct(booked) + '%';
+  }, 100);
+
+  document.getElementById('leads-count').textContent = total + ' leads total';
+}
+
+function statusBadge(s) {
+  const map = {
+    booked: 'booked', escalated: 'escalated',
+    disqualified: 'disqualified', qualified: 'qualified'
+  };
+  const cls = map[s] || 'new';
+  return `<span class="status-badge ${cls}">${s || 'new'}</span>`;
+}
+
+function renderTable(leads) {
+  if (!leads.length) {
+    document.getElementById('table-container').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📡</div>
+        <div>Waiting for first call...</div>
+      </div>`;
+    return;
+  }
+
+  const rows = leads.map(l => `
+    <tr>
+      <td>${l.name || '—'}</td>
+      <td>${l.phone || '—'}</td>
+      <td>${statusBadge(l.status)}</td>
+      <td>${l.created_at ? new Date(l.created_at).toLocaleString() : '—'}</td>
+    </tr>`).join('');
+
+  document.getElementById('table-container').innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Status</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// Auto-login if session exists
+if (sessionStorage.getItem('mvt')) showDashboard();
+</script>
 </body>
 </html>
