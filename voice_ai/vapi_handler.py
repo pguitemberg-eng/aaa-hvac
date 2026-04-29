@@ -103,6 +103,29 @@ async def handle_qualify_lead(args: dict, call_id: str) -> str:
     update_call(call_id, lead_name=lead_state["lead_name"],
                 phone=lead_state["lead_phone"],
                 lead_state_json=json.dumps(lead_state))
+
+                try:
+        from db.postgres import get_conn
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO leads (client_id, name, phone, email, status, source) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (1, lead_state["lead_name"], lead_state["lead_phone"], lead_state["lead_email"], "new", "Voice AI")
+                )
+            conn.commit()
+    except Exception as e:
+        print(f"[PostgreSQL] Lead save error: {e}")
+
+        from db.postgres import get_conn
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO leads (client_id, name, phone, email, status, source) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (1, lead_state["lead_name"], lead_state["lead_phone"], lead_state["lead_email"], "new", "Voice AI")
+                )
+            conn.commit()
+    except Exception as e:
+        print(f"[PostgreSQL] Lead save error: {e}")
     asyncio.create_task(_run_agent_async(lead_state, call_id))
     urgency = args.get("lead_urgency", "routine")
     if urgency == "emergency":
