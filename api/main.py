@@ -243,13 +243,11 @@ async def get_appointments(client_id: int = None):
         with get_conn() as conn:
             with conn.cursor() as cursor:
                 if client_id:
-                    cursor.execute("SELECT id, name, address, appointment_time, appointment_date, service_type, status FROM appointments WHERE client_id = %s ORDER BY created_at DESC", (client_id,))
+                    cursor.execute("SELECT id, lead_name, phone, service_type, scheduled_at, status FROM appointments WHERE client_id = %s ORDER BY created_at DESC", (client_id,))
                 else:
-                    cursor.execute("SELECT id, name, address, appointment_time, appointment_date, service_type, status FROM appointments ORDER BY created_at DESC")
+                    cursor.execute("SELECT id, lead_name, phone, service_type, scheduled_at, status FROM appointments ORDER BY created_at DESC")
                 rows = cursor.fetchall()
-                return {"appointments": [{"id":r[0],"name":r[1],"address":r[2],"time":r[3],"date":r[4],"type":r[5],"status":r[6]} for r in rows]}
-    except Exception as e:
-        return {"appointments": [], "error": str(e)}
+                return {"appointments": [{"id":r[0],"name":r[1],"phone":r[2],"type":r[3],"time":str(r[4]),"status":r[5]} for r in rows]}
 
 @app.get("/voice-calls")
 async def get_voice_calls(client_id: int = None):
