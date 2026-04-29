@@ -248,7 +248,7 @@ async def get_appointments(client_id: int = None):
                     cursor.execute("SELECT id, lead_name, phone, service_type, scheduled_at, status FROM appointments ORDER BY created_at DESC")
                 rows = cursor.fetchall()
                 return {"appointments": [{"id":r[0],"name":r[1],"phone":r[2],"type":r[3],"time":str(r[4]),"status":r[5]} for r in rows]}
-except Exception as e:
+    except Exception as e:
         return {"appointments": [], "error": str(e)}
 @app.get("/voice-calls")
 async def get_voice_calls(client_id: int = None):
