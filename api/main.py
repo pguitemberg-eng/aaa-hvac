@@ -2,12 +2,6 @@
 api/main.py
 Main FastAPI app. All routers mounted here.
 Run: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-
-Fixes applied:
-  - CORS restricted to Railway URL + localhost (not open to all)
-  - Scheduler with error logging (jobs won't silently fail)
-  - /health endpoint shows DB + scheduler status
-  - Startup/shutdown logs for easier debugging
 """
 
 import logging
@@ -28,49 +22,39 @@ from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from booking.booking_handler import send_appointment_reminders
 from config import get_anthropic_api_key
 
-# ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("aaa-hvac")
 
-# ── Scheduler ─────────────────────────────────────────────────────────────────
 scheduler = AsyncIOScheduler()
 
 
 def scheduler_listener(event):
-    """Log scheduler job success or failure."""
     if event.exception:
         logger.error(f"[SCHEDULER] Job {event.job_id} FAILED: {event.exception}")
     else:
         logger.info(f"[SCHEDULER] Job {event.job_id} completed successfully")
 
 
-# ── CORS origins ──────────────────────────────────────────────────────────────
 def get_allowed_origins() -> list[str]:
-    """Build CORS whitelist from environment — never allow * in production."""
     origins = [
         "http://localhost:8000",
-        "http://localhost:8501",  # Streamlit local
+        "http://localhost:8501",
         "https://dashboard.midvio.com",
     ]
     railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
     if railway_domain:
         origins.append(f"https://{railway_domain}")
-
-    # Allow extra origins via env var (comma-separated)
     extra = os.getenv("CORS_ALLOWED_ORIGINS", "")
     if extra:
         origins.extend([o.strip() for o in extra.split(",") if o.strip()])
-
     return origins
 
 
-# ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     anthropic_key_loaded = False
     try:
         _ = get_anthropic_api_key()
@@ -79,7 +63,6 @@ async def lifespan(app: FastAPI):
         anthropic_key_loaded = False
 
     logger.info(f"[MAIN] Anthropic key loaded: {str(anthropic_key_loaded).lower()}")
-
     scheduler.add_listener(scheduler_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
     scheduler.add_job(
         send_appointment_reminders,
@@ -95,12 +78,10 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
     scheduler.shutdown(wait=False)
     logger.info("[MAIN] Scheduler stopped")
 
 
-# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="AAA HVAC - AI Automation API",
     version="1.0.0",
@@ -122,10 +103,12 @@ async def serve_root():
 @app.get("/dashboard")
 async def serve_admin_dashboard():
     return FileResponse("static/dashboard.html")
-    
+
+
 @app.get("/client")
 async def serve_client_dashboard():
     return FileResponse("static/client-dashboard.html")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -135,7 +118,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Routers ───────────────────────────────────────────────────────────────────
 from missed_call.missed_call_handler import router as missed_call_router
 from booking.booking_handler import router as booking_router
 from speed_to_lead.speed_to_lead import router as speed_router
@@ -145,7 +127,7 @@ from api.onboarding import router as onboarding_router
 app.include_router(missed_call_router, prefix="/twilio",     tags=["Missed Call"])
 app.include_router(booking_router,     prefix="/booking",    tags=["Booking"])
 app.include_router(speed_router,       prefix="/lead",       tags=["Speed To Lead"])
-app.include_router(vapi_router,        prefix="/vapi",        tags=["Voice AI"])
+app.include_router(vapi_router,        prefix="/vapi",       tags=["Voice AI"])
 app.include_router(onboarding_router,  prefix="/onboarding", tags=["Onboarding"])
 
 
@@ -156,7 +138,6 @@ class DashboardLoginRequest(BaseModel):
 
 @app.post("/auth/dashboard")
 async def dashboard_login(req: DashboardLoginRequest):
-    """Validate admin credentials against DASHBOARD_ADMIN_USER / DASHBOARD_ADMIN_PASS."""
     expected_user = os.getenv("DASHBOARD_ADMIN_USER", "")
     expected_pass = os.getenv("DASHBOARD_ADMIN_PASS", "")
     if not expected_user or not expected_pass:
@@ -201,10 +182,8 @@ async def terms():
     """)
 
 
-# ── Health check ──────────────────────────────────────────────────────────────
 @app.get("/health", tags=["System"])
 async def health():
-    """Detailed health check — DB connection + scheduler status."""
     db_ok = False
     try:
         from db.postgres import get_conn
@@ -223,13 +202,23 @@ async def health():
         "environment": os.getenv("RAILWAY_ENVIRONMENT", "local"),
     }
 
+
+# ── FIX: client_id filter ajoute ─────────────────────────────────────────────
 @app.get("/leads")
-async def get_leads():
+async def get_leads(client_id: int = None):
     try:
         from db.postgres import get_conn
         with get_conn() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT id, phone, status, created_at, name FROM leads ORDER BY created_at DESC")
+                if client_id:
+                    cursor.execute(
+                        "SELECT id, phone, status, created_at, name FROM leads WHERE client_id = %s ORDER BY created_at DESC",
+                        (client_id,)
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT id, phone, status, created_at, name FROM leads ORDER BY created_at DESC"
+                    )
                 rows = cursor.fetchall()
                 return {"leads": [{"id":r[0],"phone":r[1],"status":r[2],"created_at":str(r[3]),"name":r[4]} for r in rows]}
     except Exception as e:
@@ -243,13 +232,20 @@ async def get_appointments(client_id: int = None):
         with get_conn() as conn:
             with conn.cursor() as cursor:
                 if client_id:
-                    cursor.execute("SELECT id, lead_name, phone, service_type, scheduled_at, status FROM appointments WHERE client_id = %s ORDER BY created_at DESC", (client_id,))
+                    cursor.execute(
+                        "SELECT id, lead_name, phone, service_type, scheduled_at, status FROM appointments WHERE client_id = %s ORDER BY created_at DESC",
+                        (client_id,)
+                    )
                 else:
-                    cursor.execute("SELECT id, lead_name, phone, service_type, scheduled_at, status FROM appointments ORDER BY created_at DESC")
+                    cursor.execute(
+                        "SELECT id, lead_name, phone, service_type, scheduled_at, status FROM appointments ORDER BY created_at DESC"
+                    )
                 rows = cursor.fetchall()
                 return {"appointments": [{"id":r[0],"name":r[1],"phone":r[2],"type":r[3],"time":str(r[4]),"status":r[5]} for r in rows]}
     except Exception as e:
         return {"appointments": [], "error": str(e)}
+
+
 @app.get("/voice-calls")
 async def get_voice_calls(client_id: int = None):
     try:
@@ -257,13 +253,19 @@ async def get_voice_calls(client_id: int = None):
         with get_conn() as conn:
             with conn.cursor() as cursor:
                 if client_id:
-                    cursor.execute("SELECT id, caller_name, phone, call_type, duration, status, created_at FROM voice_calls WHERE client_id = %s ORDER BY created_at DESC", (client_id,))
+                    cursor.execute(
+                        "SELECT id, caller_name, phone, call_type, duration, status, created_at FROM voice_calls WHERE client_id = %s ORDER BY created_at DESC",
+                        (client_id,)
+                    )
                 else:
-                    cursor.execute("SELECT id, caller_name, phone, call_type, duration, status, created_at FROM voice_calls ORDER BY created_at DESC")
+                    cursor.execute(
+                        "SELECT id, caller_name, phone, call_type, duration, status, created_at FROM voice_calls ORDER BY created_at DESC"
+                    )
                 rows = cursor.fetchall()
                 return {"calls": [{"id":r[0],"name":r[1],"phone":r[2],"type":r[3],"duration":r[4],"status":r[5],"date":str(r[6])} for r in rows]}
     except Exception as e:
         return {"calls": [], "error": str(e)}
+
 
 @app.post("/clients")
 async def create_client(data: dict):
@@ -280,17 +282,22 @@ async def create_client(data: dict):
     except Exception as e:
         return {"ok": False, "detail": str(e)}
 
+
 @app.get("/clients")
 async def get_clients():
     try:
         from db.postgres import get_conn
         with get_conn() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT id, company_name, username, phone_number, active FROM clients ORDER BY company_name")
+                cursor.execute(
+                    "SELECT id, company_name, username, phone_number, active FROM clients ORDER BY company_name"
+                )
                 rows = cursor.fetchall()
                 return {"clients": [{"id":r[0],"company_name":r[1],"username":r[2],"phone_number":r[3],"active":r[4]} for r in rows]}
     except Exception as e:
         return {"clients": [], "error": str(e)}
+
+
 @app.post("/client-login")
 async def client_login(data: dict):
     import hashlib
@@ -309,4 +316,3 @@ async def client_login(data: dict):
                 return {"ok": False, "detail": "Invalid credentials"}
     except Exception as e:
         return {"ok": False, "detail": str(e)}
-        
