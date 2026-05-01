@@ -1,7 +1,7 @@
 ﻿"""
 voice_ai/vapi_handler.py — FINAL VERSION
 Tools: checkAvailability, bookAppointment, endCall
-Fix: Full date injection for entire year (not just current week)
+Fix: Auto-update firstMessage with today's date every day at 8 AM
 """
 
 import os
@@ -31,65 +31,78 @@ BUSINESS_PHONE = os.getenv("BUSINESS_PHONE", "")
 VAPI_BASE_URL = "https://api.vapi.ai"
 
 
-# ── Date context builder ──────────────────────────────────────────────────────
+# ── Date builders ─────────────────────────────────────────────────────────────
 
-def build_date_context() -> str:
+def build_first_message() -> str:
     """
-    Build a full date context string for the entire year.
-    Includes today's date, next occurrence of every weekday,
-    and all months/days so agent can resolve ANY date reference correctly.
+    Build firstMessage with today's date + next occurrence of every weekday.
+    This is injected into Vapi assistant daily so agent always knows exact dates.
     """
     now = datetime.now()
-    today_str = now.strftime("%A, %B %d, %Y")
 
-    # Next occurrence of each weekday (never returns today as "next")
-    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    def next_wd(wd: int) -> str:
+        days = (wd - now.weekday()) % 7
+        if days == 0:
+            days = 7
+        return (now + timedelta(days=days)).strftime("%B %d, %Y")
 
-    def next_weekday(target_wd: int) -> str:
-        """Return next occurrence of weekday (0=Mon..6=Sun), never today."""
-        days_ahead = (target_wd - now.weekday()) % 7
-        if days_ahead == 0:
-            days_ahead = 7  # same weekday → next week
-        return (now + timedelta(days=days_ahead)).strftime("%A, %B %d, %Y")
-
-    weekday_lines = "\n".join(
-        f"- Next {name}: {next_weekday(i)}"
-        for i, name in enumerate(weekday_names)
+    weekday_ref = (
+        f"Next Monday is {next_wd(0)}, "
+        f"next Tuesday is {next_wd(1)}, "
+        f"next Wednesday is {next_wd(2)}, "
+        f"next Thursday is {next_wd(3)}, "
+        f"next Friday is {next_wd(4)}, "
+        f"next Saturday is {next_wd(5)}, "
+        f"next Sunday is {next_wd(6)}."
     )
 
-    # Generate remaining months of the year with their date ranges
-    months_context = []
-    for month_offset in range(12):
-        month_dt = datetime(now.year, now.month, 1) + timedelta(days=31 * month_offset)
-        month_dt = month_dt.replace(day=1)
-        if month_dt.year > now.year:
-            break
-        months_context.append(f"- {month_dt.strftime('%B %Y')}: starts {month_dt.strftime('%A, %B %d')}")
+    return (
+        f"Thank you for calling {BUSINESS_NAME}! "
+        f"Today is {now.strftime('%A, %B %d, %Y')}. "
+        f"{weekday_ref} "
+        f"How can I help you today?"
+    )
 
-    months_lines = "\n".join(months_context)
 
-    context = f"""=== CURRENT DATE CONTEXT (injected at call start) ===
-Today is: {today_str}
-Current weekday: {now.strftime('%A')}
-Current month: {now.strftime('%B %Y')}
+# ── Auto-update firstMessage endpoint ────────────────────────────────────────
 
-Next occurrence of each weekday from today:
-{weekday_lines}
+@router.post("/update-assistant-date")
+@router.get("/update-assistant-date")
+async def update_assistant_date():
+    """
+    Update Vapi assistant firstMessage with today's date + next weekdays.
+    Call daily at 8 AM via Railway scheduler or manually via browser.
+    """
+    if not VAPI_API_KEY or not VAPI_ASSISTANT_ID:
+        raise HTTPException(status_code=503, detail="VAPI_API_KEY or VAPI_ASSISTANT_ID missing")
 
-Remaining months this year:
-{months_lines}
+    first_message = build_first_message()
+    print(f"[DATE-UPDATE] {first_message}")
 
-RULES:
-- When customer says "Monday", use "Next Monday" date above.
-- When customer says "next week Monday", add 7 days to "Next Monday" above.
-- When customer gives a specific date like "June 10", convert it to the correct weekday using the calendar above.
-- ALWAYS confirm: "Just to confirm — that's [WEEKDAY], [MONTH] [DAY], [YEAR], correct?"
-- If customer says a weekday that does NOT match the date they give, politely correct them.
-- Example: if customer says "Monday June 27" but June 27 is a Saturday, say:
-  "Just to double-check — June 27th actually falls on a Saturday this year. Did you mean Monday June 22nd, or Saturday June 27th?"
-======================================================
-"""
-    return context
+    async with httpx.AsyncClient() as client:
+        resp = await client.patch(
+            f"{VAPI_BASE_URL}/assistant/{VAPI_ASSISTANT_ID}",
+            json={"firstMessage": first_message},
+            headers={
+                "Authorization": f"Bearer {VAPI_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            timeout=10,
+        )
+
+    print(f"[DATE-UPDATE] Vapi response: {resp.status_code} — {resp.text[:200]}")
+
+    if resp.status_code not in (200, 201):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Vapi update failed: {resp.text}"
+        )
+
+    return {
+        "status": "updated",
+        "date": datetime.now().strftime("%A, %B %d, %Y"),
+        "firstMessage": first_message
+    }
 
 
 # ── SQLite helpers ────────────────────────────────────────────────────────────
@@ -161,17 +174,11 @@ def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = 
 
 def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
     """
-    Parse natural language date/time from Vapi.
-    Since agent now receives exact dates (e.g. 'May 5, 2026'),
-    we try standard formats first, then fall back to natural language.
+    Parse date/time. Tries exact formats first, falls back to natural language.
     """
     now = datetime.now()
-
-    # ── Parse DATE ──
-    d = date_str.lower().strip()
-
-    # Try standard formats first (agent should now send these)
     parsed_date = None
+
     for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y"]:
         try:
             parsed_date = datetime.strptime(date_str.strip(), fmt)
@@ -180,7 +187,7 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
             continue
 
     if parsed_date is None:
-        # Natural language fallback
+        d = date_str.lower().strip()
         if "tomorrow" in d:
             parsed_date = now + timedelta(days=1)
         elif "today" in d:
@@ -200,9 +207,8 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
             if not matched:
                 parsed_date = now + timedelta(days=1)
 
-    # ── Parse TIME ──
+    # Parse time
     t = time_str.lower().strip()
-
     word_to_num = {
         "one": 1, "two": 2, "three": 3, "four": 4,
         "five": 5, "six": 6, "seven": 7, "eight": 8,
@@ -216,7 +222,7 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
     is_am = "am" in t
     numbers = re.findall(r'\d+', t)
 
-    hour = 10  # default 10 AM
+    hour = 10
     minute = 0
 
     if numbers:
@@ -229,7 +235,7 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
     elif is_am and hour == 12:
         hour = 0
     elif not is_am and not is_pm and 1 <= hour <= 7:
-        hour += 12  # assume PM for ambiguous early hours
+        hour += 12
 
     hour = max(0, min(23, hour))
     minute = max(0, min(59, minute))
@@ -284,10 +290,8 @@ async def handle_book_appointment(args: dict, call_id: str) -> str:
     print(f"[BOOKING] {name} | {phone} | {full_address} | {date} {time} | {issue}")
     print(f"[BOOKING] Parsed datetime: {appointment_dt}")
 
-    # 1. Save lead
     save_lead_to_postgres(name=name, phone=phone, source="Voice AI - bookAppointment")
 
-    # 2. Book Google Calendar
     result = book_on_google_calendar(
         name=name,
         phone=phone,
@@ -297,7 +301,6 @@ async def handle_book_appointment(args: dict, call_id: str) -> str:
         notes="Booked via Voice AI",
     )
 
-    # 3. Update call record
     update_call(call_id, lead_name=name, phone=phone, outcome="appointment_booked")
 
     if result.get("success"):
@@ -339,39 +342,13 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
     print(f"[VAPI] Event: {msg_type} | Call: {call_id}")
     print(f"[VAPI] Body: {json.dumps(body)[:400]}")
 
-    # ── call-started: log + inject full date context ──────────────────────────
     if msg_type == "call-started":
         customer_number = call.get("customer", {}).get("number", "")
         direction = call.get("type", "inboundPhoneCall")
         log_call(call_id, phone=customer_number,
                  direction="inbound" if "inbound" in direction.lower() else "outbound")
-
-        # Build and inject date context into the live call
-        date_context = build_date_context()
-        print(f"[DATE] Injecting date context:\n{date_context}")
-
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.patch(
-                    f"{VAPI_BASE_URL}/call/{call_id}",
-                    json={
-                        "assistantOverrides": {
-                            "systemPrompt": date_context
-                        }
-                    },
-                    headers={
-                        "Authorization": f"Bearer {VAPI_API_KEY}",
-                        "Content-Type": "application/json"
-                    },
-                    timeout=10,
-                )
-            print(f"[DATE] Inject response: {resp.status_code}")
-        except Exception as e:
-            print(f"[DATE] Inject error: {e}")
-
         return JSONResponse({"status": "logged"})
 
-    # ── function-call ─────────────────────────────────────────────────────────
     if msg_type == "function-call":
         func_call = message.get("functionCall", {})
         func_name = func_call.get("name", "")
@@ -395,7 +372,6 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
 
         return JSONResponse({"result": result})
 
-    # ── end-of-call-report ────────────────────────────────────────────────────
     if msg_type == "end-of-call-report":
         transcript = message.get("transcript", "")
         customer_number = call.get("customer", {}).get("number", "")

@@ -53,6 +53,22 @@ def get_allowed_origins() -> list[str]:
     return origins
 
 
+# ── Daily date update job ─────────────────────────────────────────────────────
+
+async def daily_update_assistant_date():
+    """Update Vapi assistant firstMessage with today's date every morning at 8 AM."""
+    import httpx
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.midvio.com/vapi/update-assistant-date",
+                timeout=15,
+            )
+        logger.info(f"[SCHEDULER] daily_update_assistant_date → {resp.status_code}")
+    except Exception as e:
+        logger.error(f"[SCHEDULER] daily_update_assistant_date FAILED: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     anthropic_key_loaded = False
@@ -64,6 +80,8 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"[MAIN] Anthropic key loaded: {str(anthropic_key_loaded).lower()}")
     scheduler.add_listener(scheduler_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
+
+    # ── Appointment reminders every 30 min ────────────────────────────────────
     scheduler.add_job(
         send_appointment_reminders,
         "interval",
@@ -72,9 +90,29 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
         misfire_grace_time=60,
     )
+
+    # ── Update Vapi assistant date every day at 8 AM ──────────────────────────
+    scheduler.add_job(
+        daily_update_assistant_date,
+        "cron",
+        hour=8,
+        minute=0,
+        id="daily_update_assistant_date",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+
     scheduler.start()
     logger.info("[MAIN] Scheduler started — appointment reminders every 30 min")
+    logger.info("[MAIN] Scheduler started — assistant date update every day at 8 AM")
     logger.info(f"[MAIN] CORS allowed origins: {get_allowed_origins()}")
+
+    # ── Run date update immediately on startup ────────────────────────────────
+    try:
+        await daily_update_assistant_date()
+        logger.info("[MAIN] Assistant date updated on startup")
+    except Exception as e:
+        logger.warning(f"[MAIN] Startup date update failed (non-fatal): {e}")
 
     yield
 
@@ -203,7 +241,6 @@ async def health():
     }
 
 
-# ── FIX: client_id filter ajoute ─────────────────────────────────────────────
 @app.get("/leads")
 async def get_leads(client_id: int = None):
     try:
