@@ -66,7 +66,6 @@ def build_first_message() -> str:
 
 # ── Auto-update firstMessage endpoint ────────────────────────────────────────
 
-@router.post("/update-assistant-date")
 @router.get("/update-assistant-date")
 async def update_assistant_date():
     """

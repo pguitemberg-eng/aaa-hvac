@@ -60,7 +60,7 @@ async def daily_update_assistant_date():
     import httpx
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.post(
+            resp = await client.get(
                 "https://api.midvio.com/vapi/update-assistant-date",
                 timeout=15,
             )
