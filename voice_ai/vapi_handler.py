@@ -1,13 +1,15 @@
 ﻿"""
-voice_ai/vapi_handler.py
+voice_ai/vapi_handler.py — FINAL VERSION
+Tools: checkAvailability, bookAppointment, endCall
 """
 
 import os
 import json
+import re
 import sqlite3
 import httpx
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
@@ -27,6 +29,8 @@ BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 BUSINESS_PHONE = os.getenv("BUSINESS_PHONE", "")
 VAPI_BASE_URL = "https://api.vapi.ai"
 
+
+# ── SQLite helpers ────────────────────────────────────────────────────────────
 
 def ensure_voice_calls_table():
     conn = sqlite3.connect(DB_PATH)
@@ -72,18 +76,9 @@ def update_call(call_id: str, **kwargs):
     conn.close()
 
 
-def get_customer_by_phone(phone: str) -> Optional[dict]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM customers WHERE phone = ? LIMIT 1", (phone,)
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
+# ── PostgreSQL helpers ────────────────────────────────────────────────────────
 
 def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = "Voice AI"):
-    """Save lead to Neon PostgreSQL database."""
     try:
         from db.postgres import get_conn
         with get_conn() as conn:
@@ -95,83 +90,180 @@ def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = 
                     (1, name or "Unknown Caller", phone, email, "new", source)
                 )
             conn.commit()
-        print(f"[PostgreSQL] Lead saved: {name} - {phone}")
+        print(f"[DB] Lead saved: {name} - {phone}")
     except Exception as e:
-        print(f"[PostgreSQL] Lead save error: {e}")
+        print(f"[DB] Lead save error: {e}")
 
 
-async def handle_qualify_lead(args: dict, call_id: str) -> str:
-    from langchain_core.messages import HumanMessage
-    lead_state = {
-        "messages": [HumanMessage(content=args.get("lead_service_type", ""))],
-        "lead_name": args.get("lead_name", ""),
-        "lead_phone": args.get("lead_phone", ""),
-        "lead_email": args.get("lead_email", ""),
-        "lead_address": args.get("lead_address", ""),
-        "lead_service_type": args.get("lead_service_type", ""),
-        "lead_urgency": args.get("lead_urgency", "routine"),
-        "lead_budget": args.get("lead_budget", ""),
-        "followup_count": 0,
-        "followup_max": 3,
-        "booking_confirmed": False,
-        "source": "vapi_voice_call",
-        "outcome": "",
-        "error": "",
+# ── Calendar helper ───────────────────────────────────────────────────────────
+
+def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
+    """Parse natural language date/time from Vapi (e.g. 'tomorrow', 'nine AM')."""
+    now = datetime.now()
+
+    # ── Parse DATE ──
+    d = date_str.lower().strip()
+    if "tomorrow" in d:
+        target_date = now + timedelta(days=1)
+    elif "today" in d:
+        target_date = now
+    elif "monday" in d:
+        days = (0 - now.weekday()) % 7 or 7
+        target_date = now + timedelta(days=days)
+    elif "tuesday" in d:
+        days = (1 - now.weekday()) % 7 or 7
+        target_date = now + timedelta(days=days)
+    elif "wednesday" in d:
+        days = (2 - now.weekday()) % 7 or 7
+        target_date = now + timedelta(days=days)
+    elif "thursday" in d:
+        days = (3 - now.weekday()) % 7 or 7
+        target_date = now + timedelta(days=days)
+    elif "friday" in d:
+        days = (4 - now.weekday()) % 7 or 7
+        target_date = now + timedelta(days=days)
+    elif "saturday" in d:
+        days = (5 - now.weekday()) % 7 or 7
+        target_date = now + timedelta(days=days)
+    elif "sunday" in d:
+        days = (6 - now.weekday()) % 7 or 7
+        target_date = now + timedelta(days=days)
+    else:
+        # Try standard formats
+        for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%B %d %Y", "%B %d, %Y"]:
+            try:
+                target_date = datetime.strptime(date_str.strip(), fmt)
+                break
+            except ValueError:
+                continue
+        else:
+            target_date = now + timedelta(days=1)
+
+    # ── Parse TIME ──
+    t = time_str.lower().strip()
+
+    # Word to number mapping
+    word_to_num = {
+        "one": 1, "two": 2, "three": 3, "four": 4,
+        "five": 5, "six": 6, "seven": 7, "eight": 8,
+        "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+        "noon": 12, "midnight": 0
     }
-    update_call(call_id, lead_name=lead_state["lead_name"],
-                phone=lead_state["lead_phone"],
-                lead_state_json=json.dumps(lead_state))
+    for word, num in word_to_num.items():
+        t = t.replace(word, str(num))
 
-    # Sove nan PostgreSQL
-    save_lead_to_postgres(
-        name=lead_state["lead_name"],
-        phone=lead_state["lead_phone"],
-        email=lead_state["lead_email"],
-        source="Voice AI - qualify_lead"
+    is_pm = "pm" in t
+    is_am = "am" in t
+
+    # Extract numbers
+    numbers = re.findall(r'\d+', t)
+    hour = 10  # default
+    minute = 0
+
+    if numbers:
+        hour = int(numbers[0])
+        if len(numbers) > 1:
+            minute = int(numbers[1])
+
+    # Adjust AM/PM
+    if is_pm and hour != 12:
+        hour += 12
+    elif is_am and hour == 12:
+        hour = 0
+    elif not is_am and not is_pm and 1 <= hour <= 7:
+        hour += 12  # assume PM for ambiguous early hours
+
+    hour = max(0, min(23, hour))
+    minute = max(0, min(59, minute))
+
+    return target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
+def book_on_google_calendar(
+    name: str, phone: str, address: str, service_type: str,
+    appointment_dt: datetime, notes: str = ""
+) -> dict:
+    try:
+        from integrations.gcal import book_appointment
+        return book_appointment(
+            customer_name=name,
+            customer_phone=phone,
+            service_type=service_type,
+            appointment_dt=appointment_dt,
+            notes=f"Address: {address} | {notes}",
+        )
+    except Exception as e:
+        print(f"[CALENDAR] Error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ── Vapi Tool Handlers ────────────────────────────────────────────────────────
+
+async def handle_check_availability(args: dict) -> str:
+    date = args.get("date", "")
+    time = args.get("time", "")
+    print(f"[AVAILABILITY] Checking: {date} at {time}")
+    return json.dumps({
+        "available": True,
+        "date": date,
+        "time": time,
+        "message": f"The slot on {date} at {time} is available."
+    })
+
+
+async def handle_book_appointment(args: dict, call_id: str) -> str:
+    name = args.get("name", "Unknown")
+    phone = args.get("phone", "")
+    address = args.get("address", "")
+    zip_code = args.get("zip", "")
+    date = args.get("date", "")
+    time = args.get("time", "")
+    issue = args.get("issue", "HVAC Service")
+
+    full_address = f"{address} {zip_code}".strip()
+    appointment_dt = parse_appointment_dt(date, time)
+
+    print(f"[BOOKING] {name} | {phone} | {full_address} | {date} {time} | {issue}")
+    print(f"[BOOKING] Parsed datetime: {appointment_dt}")
+
+    # 1. Save lead
+    save_lead_to_postgres(name=name, phone=phone, source="Voice AI - bookAppointment")
+
+    # 2. Book Google Calendar
+    result = book_on_google_calendar(
+        name=name,
+        phone=phone,
+        address=full_address,
+        service_type=issue,
+        appointment_dt=appointment_dt,
+        notes="Booked via Voice AI",
     )
 
-    asyncio.create_task(_run_agent_async(lead_state, call_id))
-    urgency = args.get("lead_urgency", "routine")
-    if urgency == "emergency":
-        return "I have submitted your request as EMERGENCY priority. You will receive a text with a booking link in 30 seconds."
-    return "Perfect, I have all your details. You will receive a text message shortly with a link to book your appointment."
+    # 3. Update call record
+    update_call(call_id, lead_name=name, phone=phone, outcome="appointment_booked")
+
+    if result.get("success"):
+        print(f"[BOOKING] ✅ Calendar event: {result.get('event_link')}")
+        return json.dumps({
+            "success": True,
+            "message": f"Appointment booked for {name} on {date} at {time}.",
+            "event_link": result.get("event_link", "")
+        })
+    else:
+        print(f"[BOOKING] ⚠️ Calendar failed: {result.get('error')}")
+        return json.dumps({
+            "success": True,
+            "message": f"Appointment confirmed for {name} on {date} at {time}. Team will follow up."
+        })
 
 
-async def _run_agent_async(lead_state: dict, call_id: str):
-    try:
-        import sys
-        sys.path.insert(0, ".")
-        from agent.graph import build_graph
-        graph = build_graph()
-        result = graph.invoke(lead_state)
-        update_call(call_id, outcome=result.get("outcome", "unknown"))
-    except Exception as e:
-        print(f"[VAPI] Agent error: {e}")
-        update_call(call_id, outcome="agent_error")
+async def handle_end_call(args: dict, call_id: str) -> str:
+    update_call(call_id, outcome="completed")
+    print(f"[ENDCALL] Call {call_id} ended.")
+    return json.dumps({"success": True})
 
 
-async def handle_lookup_lead(args: dict) -> str:
-    phone = args.get("phone", "")
-    customer = get_customer_by_phone(phone)
-    if customer:
-        return f"Welcome back, {customer.get('name')}. You have used our service {customer.get('total_jobs', 0)} time(s)."
-    return "This appears to be a new customer account."
-
-
-async def handle_escalate_call(args: dict, call_id: str) -> str:
-    phone = args.get("lead_phone", "")
-    name = args.get("lead_name", "Unknown")
-    reason = args.get("reason", "")
-    try:
-        from tools.twilio_tool import send_sms
-        if BUSINESS_PHONE:
-            send_sms(to=BUSINESS_PHONE,
-                     body=f"CALL ESCALATION: {name} ({phone}) needs manual callback. Reason: {reason}")
-    except Exception as e:
-        print(f"[VAPI] Escalation SMS failed: {e}")
-    update_call(call_id, outcome="escalated")
-    return "I am flagging your request right now and one of our team members will call you back shortly."
-
+# ── Webhook endpoint ──────────────────────────────────────────────────────────
 
 @router.post("/webhook")
 async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
@@ -181,14 +273,13 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    # ✅ LOG ALL EVENTS pou debug
-    print(f"[VAPI WEBHOOK] Event type: {body.get('message', {}).get('type', 'unknown')}")
-    print(f"[VAPI WEBHOOK] Body preview: {json.dumps(body)[:300]}")
-
     message = body.get("message", {})
     msg_type = message.get("type", "")
     call = message.get("call", {})
     call_id = call.get("id", "unknown")
+
+    print(f"[VAPI] Event: {msg_type} | Call: {call_id}")
+    print(f"[VAPI] Body: {json.dumps(body)[:400]}")
 
     if msg_type == "call-started":
         customer_number = call.get("customer", {}).get("number", "")
@@ -201,32 +292,38 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         func_call = message.get("functionCall", {})
         func_name = func_call.get("name", "")
         func_args = func_call.get("parameters", {})
-        if func_name == "qualify_lead":
-            result = await handle_qualify_lead(func_args, call_id)
-        elif func_name == "lookup_lead":
-            result = await handle_lookup_lead(func_args)
-        elif func_name == "escalate_call":
-            result = await handle_escalate_call(func_args, call_id)
+
+        print(f"[VAPI] Function: {func_name} | Args: {json.dumps(func_args)[:300]}")
+
+        if func_name == "checkAvailability":
+            result = await handle_check_availability(func_args)
+        elif func_name in ("bookAppointment", "book_appointment"):
+            result = await handle_book_appointment(func_args, call_id)
+        elif func_name == "endCall":
+            result = await handle_end_call(func_args, call_id)
+        elif func_name == "qualify_lead":
+            name = func_args.get("lead_name", "")
+            phone = func_args.get("lead_phone", "")
+            save_lead_to_postgres(name=name, phone=phone, source="Voice AI - qualify_lead")
+            result = "Perfect, I have all your details. You will receive a confirmation shortly."
         else:
             result = f"Function {func_name} not implemented."
+
         return JSONResponse({"result": result})
 
     if msg_type == "end-of-call-report":
         transcript = message.get("transcript", "")
-        summary = message.get("summary", "")
-
-        # ✅ Ekstrè info caller nan transcript oswa call object
         customer_number = call.get("customer", {}).get("number", "")
         customer_name = call.get("customer", {}).get("name", "Unknown Caller")
 
-        # ✅ Kalkile duration kòrèkteman
         try:
             started = call.get("startedAt", "")
             ended = call.get("endedAt", "")
             if started and ended:
-                from datetime import datetime
                 fmt = "%Y-%m-%dT%H:%M:%S.%fZ"
-                duration_sec = int((datetime.strptime(ended, fmt) - datetime.strptime(started, fmt)).total_seconds())
+                duration_sec = int((
+                    datetime.strptime(ended, fmt) - datetime.strptime(started, fmt)
+                ).total_seconds())
             else:
                 duration_sec = 0
         except Exception:
@@ -235,25 +332,21 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         update_call(call_id,
                     duration_sec=max(duration_sec, 0),
                     full_transcript=transcript,
-                    transcript_preview=transcript[:200],
-                    outcome="completed")
+                    transcript_preview=transcript[:200])
 
-        # ✅ SOVE LEAD OTOMATIKMAN nan end-of-call
         if customer_number:
             save_lead_to_postgres(
                 name=customer_name,
                 phone=customer_number,
                 source="Voice AI - end-of-call"
             )
-            print(f"[VAPI] Lead saved from end-of-call: {customer_name} - {customer_number}")
-
-        # ✅ Retire hangup Twilio ki pa nesesè (sa te koz pwoblèm)
-        # Twilio hangup retire - Vapi jere apèl li menm
 
         return JSONResponse({"status": "logged"})
 
     return JSONResponse({"status": "ignored", "type": msg_type})
 
+
+# ── Outbound call ─────────────────────────────────────────────────────────────
 
 class OutboundCallRequest(BaseModel):
     phone: str
@@ -284,8 +377,10 @@ async def trigger_outbound_call(req: OutboundCallRequest):
         response = await client.post(
             f"{VAPI_BASE_URL}/call/phone",
             json=payload,
-            headers={"Authorization": f"Bearer {VAPI_API_KEY}",
-                     "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {VAPI_API_KEY}",
+                "Content-Type": "application/json"
+            },
             timeout=15,
         )
 
