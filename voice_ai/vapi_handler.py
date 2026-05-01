@@ -1,6 +1,7 @@
 ﻿"""
 voice_ai/vapi_handler.py — FINAL VERSION
 Tools: checkAvailability, bookAppointment, endCall
+Fix: Full date injection for entire year (not just current week)
 """
 
 import os
@@ -28,6 +29,67 @@ DB_PATH = os.getenv("SQLITE_DB_PATH", "memory/hvac_leads.db")
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 BUSINESS_PHONE = os.getenv("BUSINESS_PHONE", "")
 VAPI_BASE_URL = "https://api.vapi.ai"
+
+
+# ── Date context builder ──────────────────────────────────────────────────────
+
+def build_date_context() -> str:
+    """
+    Build a full date context string for the entire year.
+    Includes today's date, next occurrence of every weekday,
+    and all months/days so agent can resolve ANY date reference correctly.
+    """
+    now = datetime.now()
+    today_str = now.strftime("%A, %B %d, %Y")
+
+    # Next occurrence of each weekday (never returns today as "next")
+    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    def next_weekday(target_wd: int) -> str:
+        """Return next occurrence of weekday (0=Mon..6=Sun), never today."""
+        days_ahead = (target_wd - now.weekday()) % 7
+        if days_ahead == 0:
+            days_ahead = 7  # same weekday → next week
+        return (now + timedelta(days=days_ahead)).strftime("%A, %B %d, %Y")
+
+    weekday_lines = "\n".join(
+        f"- Next {name}: {next_weekday(i)}"
+        for i, name in enumerate(weekday_names)
+    )
+
+    # Generate remaining months of the year with their date ranges
+    months_context = []
+    for month_offset in range(12):
+        month_dt = datetime(now.year, now.month, 1) + timedelta(days=31 * month_offset)
+        month_dt = month_dt.replace(day=1)
+        if month_dt.year > now.year:
+            break
+        months_context.append(f"- {month_dt.strftime('%B %Y')}: starts {month_dt.strftime('%A, %B %d')}")
+
+    months_lines = "\n".join(months_context)
+
+    context = f"""=== CURRENT DATE CONTEXT (injected at call start) ===
+Today is: {today_str}
+Current weekday: {now.strftime('%A')}
+Current month: {now.strftime('%B %Y')}
+
+Next occurrence of each weekday from today:
+{weekday_lines}
+
+Remaining months this year:
+{months_lines}
+
+RULES:
+- When customer says "Monday", use "Next Monday" date above.
+- When customer says "next week Monday", add 7 days to "Next Monday" above.
+- When customer gives a specific date like "June 10", convert it to the correct weekday using the calendar above.
+- ALWAYS confirm: "Just to confirm — that's [WEEKDAY], [MONTH] [DAY], [YEAR], correct?"
+- If customer says a weekday that does NOT match the date they give, politely correct them.
+- Example: if customer says "Monday June 27" but June 27 is a Saturday, say:
+  "Just to double-check — June 27th actually falls on a Saturday this year. Did you mean Monday June 22nd, or Saturday June 27th?"
+======================================================
+"""
+    return context
 
 
 # ── SQLite helpers ────────────────────────────────────────────────────────────
@@ -98,51 +160,49 @@ def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = 
 # ── Calendar helper ───────────────────────────────────────────────────────────
 
 def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
-    """Parse natural language date/time from Vapi (e.g. 'tomorrow', 'nine AM')."""
+    """
+    Parse natural language date/time from Vapi.
+    Since agent now receives exact dates (e.g. 'May 5, 2026'),
+    we try standard formats first, then fall back to natural language.
+    """
     now = datetime.now()
 
     # ── Parse DATE ──
     d = date_str.lower().strip()
-    if "tomorrow" in d:
-        target_date = now + timedelta(days=1)
-    elif "today" in d:
-        target_date = now
-    elif "monday" in d:
-        days = (0 - now.weekday()) % 7 or 7
-        target_date = now + timedelta(days=days)
-    elif "tuesday" in d:
-        days = (1 - now.weekday()) % 7 or 7
-        target_date = now + timedelta(days=days)
-    elif "wednesday" in d:
-        days = (2 - now.weekday()) % 7 or 7
-        target_date = now + timedelta(days=days)
-    elif "thursday" in d:
-        days = (3 - now.weekday()) % 7 or 7
-        target_date = now + timedelta(days=days)
-    elif "friday" in d:
-        days = (4 - now.weekday()) % 7 or 7
-        target_date = now + timedelta(days=days)
-    elif "saturday" in d:
-        days = (5 - now.weekday()) % 7 or 7
-        target_date = now + timedelta(days=days)
-    elif "sunday" in d:
-        days = (6 - now.weekday()) % 7 or 7
-        target_date = now + timedelta(days=days)
-    else:
-        # Try standard formats
-        for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%B %d %Y", "%B %d, %Y"]:
-            try:
-                target_date = datetime.strptime(date_str.strip(), fmt)
-                break
-            except ValueError:
-                continue
+
+    # Try standard formats first (agent should now send these)
+    parsed_date = None
+    for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y"]:
+        try:
+            parsed_date = datetime.strptime(date_str.strip(), fmt)
+            break
+        except ValueError:
+            continue
+
+    if parsed_date is None:
+        # Natural language fallback
+        if "tomorrow" in d:
+            parsed_date = now + timedelta(days=1)
+        elif "today" in d:
+            parsed_date = now
         else:
-            target_date = now + timedelta(days=1)
+            weekdays = {
+                "monday": 0, "tuesday": 1, "wednesday": 2,
+                "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6
+            }
+            matched = False
+            for name, wd in weekdays.items():
+                if name in d:
+                    days_ahead = (wd - now.weekday()) % 7 or 7
+                    parsed_date = now + timedelta(days=days_ahead)
+                    matched = True
+                    break
+            if not matched:
+                parsed_date = now + timedelta(days=1)
 
     # ── Parse TIME ──
     t = time_str.lower().strip()
 
-    # Word to number mapping
     word_to_num = {
         "one": 1, "two": 2, "three": 3, "four": 4,
         "five": 5, "six": 6, "seven": 7, "eight": 8,
@@ -154,10 +214,9 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
 
     is_pm = "pm" in t
     is_am = "am" in t
-
-    # Extract numbers
     numbers = re.findall(r'\d+', t)
-    hour = 10  # default
+
+    hour = 10  # default 10 AM
     minute = 0
 
     if numbers:
@@ -165,7 +224,6 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
         if len(numbers) > 1:
             minute = int(numbers[1])
 
-    # Adjust AM/PM
     if is_pm and hour != 12:
         hour += 12
     elif is_am and hour == 12:
@@ -176,7 +234,7 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
     hour = max(0, min(23, hour))
     minute = max(0, min(59, minute))
 
-    return target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return parsed_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
 def book_on_google_calendar(
@@ -281,13 +339,39 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
     print(f"[VAPI] Event: {msg_type} | Call: {call_id}")
     print(f"[VAPI] Body: {json.dumps(body)[:400]}")
 
+    # ── call-started: log + inject full date context ──────────────────────────
     if msg_type == "call-started":
         customer_number = call.get("customer", {}).get("number", "")
         direction = call.get("type", "inboundPhoneCall")
         log_call(call_id, phone=customer_number,
                  direction="inbound" if "inbound" in direction.lower() else "outbound")
+
+        # Build and inject date context into the live call
+        date_context = build_date_context()
+        print(f"[DATE] Injecting date context:\n{date_context}")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.patch(
+                    f"{VAPI_BASE_URL}/call/{call_id}",
+                    json={
+                        "assistantOverrides": {
+                            "systemPrompt": date_context
+                        }
+                    },
+                    headers={
+                        "Authorization": f"Bearer {VAPI_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    timeout=10,
+                )
+            print(f"[DATE] Inject response: {resp.status_code}")
+        except Exception as e:
+            print(f"[DATE] Inject error: {e}")
+
         return JSONResponse({"status": "logged"})
 
+    # ── function-call ─────────────────────────────────────────────────────────
     if msg_type == "function-call":
         func_call = message.get("functionCall", {})
         func_name = func_call.get("name", "")
@@ -311,6 +395,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
 
         return JSONResponse({"result": result})
 
+    # ── end-of-call-report ────────────────────────────────────────────────────
     if msg_type == "end-of-call-report":
         transcript = message.get("transcript", "")
         customer_number = call.get("customer", {}).get("number", "")
