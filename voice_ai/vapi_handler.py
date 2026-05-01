@@ -82,6 +82,24 @@ def get_customer_by_phone(phone: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = "Voice AI"):
+    """Save lead to Neon PostgreSQL database."""
+    try:
+        from db.postgres import get_conn
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO leads (client_id, name, phone, email, status, source, created_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                       ON CONFLICT DO NOTHING""",
+                    (1, name or "Unknown Caller", phone, email, "new", source)
+                )
+            conn.commit()
+        print(f"[PostgreSQL] Lead saved: {name} - {phone}")
+    except Exception as e:
+        print(f"[PostgreSQL] Lead save error: {e}")
+
+
 async def handle_qualify_lead(args: dict, call_id: str) -> str:
     from langchain_core.messages import HumanMessage
     lead_state = {
@@ -105,17 +123,12 @@ async def handle_qualify_lead(args: dict, call_id: str) -> str:
                 lead_state_json=json.dumps(lead_state))
 
     # Sove nan PostgreSQL
-    try:
-        from db.postgres import get_conn
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO leads (client_id, name, phone, email, status, source) VALUES (%s, %s, %s, %s, %s, %s)",
-                    (1, lead_state["lead_name"], lead_state["lead_phone"], lead_state["lead_email"], "new", "Voice AI")
-                )
-            conn.commit()
-    except Exception as e:
-        print(f"[PostgreSQL] Lead save error: {e}")
+    save_lead_to_postgres(
+        name=lead_state["lead_name"],
+        phone=lead_state["lead_phone"],
+        email=lead_state["lead_email"],
+        source="Voice AI - qualify_lead"
+    )
 
     asyncio.create_task(_run_agent_async(lead_state, call_id))
     urgency = args.get("lead_urgency", "routine")
@@ -168,6 +181,10 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
+    # ✅ LOG ALL EVENTS pou debug
+    print(f"[VAPI WEBHOOK] Event type: {body.get('message', {}).get('type', 'unknown')}")
+    print(f"[VAPI WEBHOOK] Body preview: {json.dumps(body)[:300]}")
+
     message = body.get("message", {})
     msg_type = message.get("type", "")
     call = message.get("call", {})
@@ -195,23 +212,44 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse({"result": result})
 
     if msg_type == "end-of-call-report":
-        duration_sec = int(call.get("endedAt", 0)) - int(call.get("startedAt", 0))
         transcript = message.get("transcript", "")
-        update_call(call_id, duration_sec=max(duration_sec, 0),
-                    full_transcript=transcript,
-                    transcript_preview=transcript[:200])
+        summary = message.get("summary", "")
+
+        # ✅ Ekstrè info caller nan transcript oswa call object
+        customer_number = call.get("customer", {}).get("number", "")
+        customer_name = call.get("customer", {}).get("name", "Unknown Caller")
+
+        # ✅ Kalkile duration kòrèkteman
         try:
-            from twilio.rest import Client
-            twilio_client = Client(
-                os.getenv("TWILIO_ACCOUNT_SID"),
-                os.getenv("TWILIO_AUTH_TOKEN")
+            started = call.get("startedAt", "")
+            ended = call.get("endedAt", "")
+            if started and ended:
+                from datetime import datetime
+                fmt = "%Y-%m-%dT%H:%M:%S.%fZ"
+                duration_sec = int((datetime.strptime(ended, fmt) - datetime.strptime(started, fmt)).total_seconds())
+            else:
+                duration_sec = 0
+        except Exception:
+            duration_sec = 0
+
+        update_call(call_id,
+                    duration_sec=max(duration_sec, 0),
+                    full_transcript=transcript,
+                    transcript_preview=transcript[:200],
+                    outcome="completed")
+
+        # ✅ SOVE LEAD OTOMATIKMAN nan end-of-call
+        if customer_number:
+            save_lead_to_postgres(
+                name=customer_name,
+                phone=customer_number,
+                source="Voice AI - end-of-call"
             )
-            active_calls = twilio_client.calls.list(status="in-progress", limit=5)
-            for active_call in active_calls:
-                active_call.update(status="completed")
-            print(f"[HANGUP] Forced hangup on {len(active_calls)} call(s)")
-        except Exception as e:
-            print(f"[HANGUP] Error: {e}")
+            print(f"[VAPI] Lead saved from end-of-call: {customer_name} - {customer_number}")
+
+        # ✅ Retire hangup Twilio ki pa nesesè (sa te koz pwoblèm)
+        # Twilio hangup retire - Vapi jere apèl li menm
+
         return JSONResponse({"status": "logged"})
 
     return JSONResponse({"status": "ignored", "type": msg_type})
