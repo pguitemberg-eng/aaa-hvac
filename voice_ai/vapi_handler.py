@@ -1,7 +1,7 @@
 """
 voice_ai/vapi_handler.py — FINAL VERSION
 Tools: checkAvailability, bookAppointment, endCall
-Fix: Short firstMessage + date context in system prompt only
+Fix: Correct Vapi tool response format + proper flow
 """
 
 import os
@@ -9,7 +9,6 @@ import json
 import re
 import sqlite3
 import httpx
-import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -39,10 +38,7 @@ def build_first_message() -> str:
 
 
 def build_date_system_prompt() -> str:
-    """
-    Compact date context injected into system prompt daily.
-    Agent uses this internally — never reads it aloud.
-    """
+    """Compact date context — agent uses internally, never reads aloud."""
     now = datetime.now()
 
     def next_wd(wd: int) -> str:
@@ -59,20 +55,13 @@ def build_date_system_prompt() -> str:
     )
 
 
-# ── Auto-update firstMessage + system prompt ──────────────────────────────────
+# ── Auto-update assistant date ────────────────────────────────────────────────
 
 @router.get("/update-assistant-date")
 async def update_assistant_date():
-    """
-    Update Vapi assistant:
-    - firstMessage: short greeting only
-    - systemPrompt: append today's date context at the end
-    Call daily at 8 AM via Railway scheduler or manually via browser.
-    """
     if not VAPI_API_KEY or not VAPI_ASSISTANT_ID:
-        raise HTTPException(status_code=503, detail="VAPI_API_KEY or VAPI_ASSISTANT_ID missing")
+        raise HTTPException(status_code=503, detail="VAPI config missing")
 
-    # 1. Get current assistant to read existing system prompt
     async with httpx.AsyncClient() as client:
         get_resp = await client.get(
             f"{VAPI_BASE_URL}/assistant/{VAPI_ASSISTANT_ID}",
@@ -86,18 +75,14 @@ async def update_assistant_date():
     assistant_data = get_resp.json()
     current_prompt = assistant_data.get("model", {}).get("systemPrompt", "")
 
-    # Remove old date context if exists
     if "[DATE CONTEXT" in current_prompt:
         current_prompt = current_prompt.split("\n\n[DATE CONTEXT")[0]
 
-    # Append new date context
     new_prompt = current_prompt + build_date_system_prompt()
     first_message = build_first_message()
 
-    print(f"[DATE-UPDATE] firstMessage: {first_message}")
-    print(f"[DATE-UPDATE] Date appended to system prompt")
+    print(f"[DATE-UPDATE] Updating assistant...")
 
-    # 2. Patch assistant
     async with httpx.AsyncClient() as client:
         resp = await client.patch(
             f"{VAPI_BASE_URL}/assistant/{VAPI_ASSISTANT_ID}",
@@ -116,13 +101,10 @@ async def update_assistant_date():
             timeout=10,
         )
 
-    print(f"[DATE-UPDATE] Vapi response: {resp.status_code} — {resp.text[:200]}")
+    print(f"[DATE-UPDATE] Vapi response: {resp.status_code}")
 
     if resp.status_code not in (200, 201):
-        raise HTTPException(
-            status_code=resp.status_code,
-            detail=f"Vapi update failed: {resp.text}"
-        )
+        raise HTTPException(status_code=resp.status_code, detail=f"Vapi update failed: {resp.text}")
 
     return {
         "status": "updated",
@@ -243,7 +225,6 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
     is_pm = "pm" in t
     is_am = "am" in t
     numbers = re.findall(r'\d+', t)
-
     hour = 10
     minute = 0
 
@@ -286,15 +267,15 @@ def book_on_google_calendar(
 # ── Vapi Tool Handlers ────────────────────────────────────────────────────────
 
 async def handle_check_availability(args: dict) -> str:
+    """
+    Always returns available = True with a natural confirmation message.
+    Agent uses this to confirm slot before booking.
+    """
     date = args.get("date", "")
     time = args.get("time", "")
     print(f"[AVAILABILITY] Checking: {date} at {time}")
-    return json.dumps({
-        "available": True,
-        "date": date,
-        "time": time,
-        "message": f"The slot on {date} at {time} is available."
-    })
+    # Return plain string — Vapi reads this as agent response
+    return f"Yes, {date} at {time} is available. Shall I go ahead and book that for you?"
 
 
 async def handle_book_appointment(args: dict, call_id: str) -> str:
@@ -327,23 +308,41 @@ async def handle_book_appointment(args: dict, call_id: str) -> str:
 
     if result.get("success"):
         print(f"[BOOKING] ✅ Calendar event: {result.get('event_link')}")
-        return json.dumps({
-            "success": True,
-            "message": f"Appointment booked for {name} on {date} at {time}.",
-            "event_link": result.get("event_link", "")
-        })
+        return f"Appointment booked for {name} on {date} at {time}."
     else:
         print(f"[BOOKING] ⚠️ Calendar failed: {result.get('error')}")
-        return json.dumps({
-            "success": True,
-            "message": f"Appointment confirmed for {name} on {date} at {time}. Team will follow up."
-        })
+        return f"Appointment confirmed for {name} on {date} at {time}. Our team will follow up shortly."
 
 
 async def handle_end_call(args: dict, call_id: str) -> str:
     update_call(call_id, outcome="completed")
     print(f"[ENDCALL] Call {call_id} ended.")
-    return json.dumps({"success": True})
+    return "Thank you for calling. Have a great day!"
+
+
+# ── Vapi tool response helper ─────────────────────────────────────────────────
+
+def vapi_tool_response(message: dict, result: str):
+    """
+    Build correct Vapi tool response format.
+    Vapi expects: {"results": [{"toolCallId": "...", "result": "..."}]}
+    """
+    # Try toolCallList first (newer Vapi format)
+    tool_call_list = message.get("toolCallList", [])
+    if tool_call_list:
+        tool_call_id = tool_call_list[0].get("id", "")
+    else:
+        # Fallback: functionCall format
+        tool_call_id = message.get("functionCall", {}).get("id", "")
+
+    print(f"[VAPI] Tool response — toolCallId: {tool_call_id} | result: {result[:100]}")
+
+    return JSONResponse({
+        "results": [{
+            "toolCallId": tool_call_id,
+            "result": result
+        }]
+    })
 
 
 # ── Webhook endpoint ──────────────────────────────────────────────────────────
@@ -362,8 +361,9 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
     call_id = call.get("id", "unknown")
 
     print(f"[VAPI] Event: {msg_type} | Call: {call_id}")
-    print(f"[VAPI] Body: {json.dumps(body)[:400]}")
+    print(f"[VAPI] Body: {json.dumps(body)[:500]}")
 
+    # ── call-started ──────────────────────────────────────────────────────────
     if msg_type == "call-started":
         customer_number = call.get("customer", {}).get("number", "")
         direction = call.get("type", "inboundPhoneCall")
@@ -371,12 +371,13 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
                  direction="inbound" if "inbound" in direction.lower() else "outbound")
         return JSONResponse({"status": "logged"})
 
+    # ── function-call (older Vapi format) ─────────────────────────────────────
     if msg_type == "function-call":
         func_call = message.get("functionCall", {})
         func_name = func_call.get("name", "")
         func_args = func_call.get("parameters", {})
 
-        print(f"[VAPI] Function: {func_name} | Args: {json.dumps(func_args)[:300]}")
+        print(f"[VAPI] function-call: {func_name} | Args: {json.dumps(func_args)[:300]}")
 
         if func_name == "checkAvailability":
             result = await handle_check_availability(func_args)
@@ -392,8 +393,49 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         else:
             result = f"Function {func_name} not implemented."
 
-        return JSONResponse({"result": result})
+        return vapi_tool_response(message, result)
 
+    # ── tool-calls (newer Vapi format) ────────────────────────────────────────
+    if msg_type == "tool-calls":
+        tool_call_list = message.get("toolCallList", [])
+        results = []
+
+        for tool_call in tool_call_list:
+            func_name = tool_call.get("function", {}).get("name", "")
+            func_args = tool_call.get("function", {}).get("arguments", {})
+            tool_call_id = tool_call.get("id", "")
+
+            if isinstance(func_args, str):
+                try:
+                    func_args = json.loads(func_args)
+                except Exception:
+                    func_args = {}
+
+            print(f"[VAPI] tool-call: {func_name} | Args: {json.dumps(func_args)[:300]}")
+
+            if func_name == "checkAvailability":
+                result = await handle_check_availability(func_args)
+            elif func_name in ("bookAppointment", "book_appointment"):
+                result = await handle_book_appointment(func_args, call_id)
+            elif func_name == "endCall":
+                result = await handle_end_call(func_args, call_id)
+            elif func_name == "qualify_lead":
+                name = func_args.get("lead_name", "")
+                phone = func_args.get("lead_phone", "")
+                save_lead_to_postgres(name=name, phone=phone, source="Voice AI - qualify_lead")
+                result = "Perfect, I have all your details. You will receive a confirmation shortly."
+            else:
+                result = f"Function {func_name} not implemented."
+
+            results.append({
+                "toolCallId": tool_call_id,
+                "result": result
+            })
+
+        print(f"[VAPI] tool-calls results: {json.dumps(results)[:300]}")
+        return JSONResponse({"results": results})
+
+    # ── end-of-call-report ────────────────────────────────────────────────────
     if msg_type == "end-of-call-report":
         transcript = message.get("transcript", "")
         customer_number = call.get("customer", {}).get("number", "")
