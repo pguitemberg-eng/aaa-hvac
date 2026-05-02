@@ -1,7 +1,7 @@
-﻿"""
+"""
 voice_ai/vapi_handler.py — FINAL VERSION
 Tools: checkAvailability, bookAppointment, endCall
-Fix: Auto-update firstMessage with today's date every day at 8 AM
+Fix: Short firstMessage + date context in system prompt only
 """
 
 import os
@@ -34,9 +34,14 @@ VAPI_BASE_URL = "https://api.vapi.ai"
 # ── Date builders ─────────────────────────────────────────────────────────────
 
 def build_first_message() -> str:
+    """Short natural greeting — no dates read aloud."""
+    return f"Thank you for calling {BUSINESS_NAME}! How can I help you today?"
+
+
+def build_date_system_prompt() -> str:
     """
-    Build firstMessage with today's date + next occurrence of every weekday.
-    This is injected into Vapi assistant daily so agent always knows exact dates.
+    Compact date context injected into system prompt daily.
+    Agent uses this internally — never reads it aloud.
     """
     now = datetime.now()
 
@@ -46,42 +51,64 @@ def build_first_message() -> str:
             days = 7
         return (now + timedelta(days=days)).strftime("%B %d, %Y")
 
-    weekday_ref = (
-        f"Next Monday is {next_wd(0)}, "
-        f"next Tuesday is {next_wd(1)}, "
-        f"next Wednesday is {next_wd(2)}, "
-        f"next Thursday is {next_wd(3)}, "
-        f"next Friday is {next_wd(4)}, "
-        f"next Saturday is {next_wd(5)}, "
-        f"next Sunday is {next_wd(6)}."
-    )
-
     return (
-        f"Thank you for calling {BUSINESS_NAME}! "
-        f"Today is {now.strftime('%A, %B %d, %Y')}. "
-        f"{weekday_ref} "
-        f"How can I help you today?"
+        f"\n\n[DATE CONTEXT — use internally, never read aloud] "
+        f"Today: {now.strftime('%A, %B %d, %Y')} | "
+        f"Mon={next_wd(0)} | Tue={next_wd(1)} | Wed={next_wd(2)} | "
+        f"Thu={next_wd(3)} | Fri={next_wd(4)} | Sat={next_wd(5)} | Sun={next_wd(6)}"
     )
 
 
-# ── Auto-update firstMessage endpoint ────────────────────────────────────────
+# ── Auto-update firstMessage + system prompt ──────────────────────────────────
 
 @router.get("/update-assistant-date")
 async def update_assistant_date():
     """
-    Update Vapi assistant firstMessage with today's date + next weekdays.
+    Update Vapi assistant:
+    - firstMessage: short greeting only
+    - systemPrompt: append today's date context at the end
     Call daily at 8 AM via Railway scheduler or manually via browser.
     """
     if not VAPI_API_KEY or not VAPI_ASSISTANT_ID:
         raise HTTPException(status_code=503, detail="VAPI_API_KEY or VAPI_ASSISTANT_ID missing")
 
-    first_message = build_first_message()
-    print(f"[DATE-UPDATE] {first_message}")
+    # 1. Get current assistant to read existing system prompt
+    async with httpx.AsyncClient() as client:
+        get_resp = await client.get(
+            f"{VAPI_BASE_URL}/assistant/{VAPI_ASSISTANT_ID}",
+            headers={"Authorization": f"Bearer {VAPI_API_KEY}"},
+            timeout=10,
+        )
 
+    if get_resp.status_code != 200:
+        raise HTTPException(status_code=get_resp.status_code, detail="Failed to get assistant")
+
+    assistant_data = get_resp.json()
+    current_prompt = assistant_data.get("model", {}).get("systemPrompt", "")
+
+    # Remove old date context if exists
+    if "[DATE CONTEXT" in current_prompt:
+        current_prompt = current_prompt.split("\n\n[DATE CONTEXT")[0]
+
+    # Append new date context
+    new_prompt = current_prompt + build_date_system_prompt()
+    first_message = build_first_message()
+
+    print(f"[DATE-UPDATE] firstMessage: {first_message}")
+    print(f"[DATE-UPDATE] Date appended to system prompt")
+
+    # 2. Patch assistant
     async with httpx.AsyncClient() as client:
         resp = await client.patch(
             f"{VAPI_BASE_URL}/assistant/{VAPI_ASSISTANT_ID}",
-            json={"firstMessage": first_message},
+            json={
+                "firstMessage": first_message,
+                "model": {
+                    "provider": assistant_data.get("model", {}).get("provider", "openai"),
+                    "model": assistant_data.get("model", {}).get("model", "gpt-4"),
+                    "systemPrompt": new_prompt,
+                }
+            },
             headers={
                 "Authorization": f"Bearer {VAPI_API_KEY}",
                 "Content-Type": "application/json"
@@ -172,9 +199,6 @@ def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = 
 # ── Calendar helper ───────────────────────────────────────────────────────────
 
 def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
-    """
-    Parse date/time. Tries exact formats first, falls back to natural language.
-    """
     now = datetime.now()
     parsed_date = None
 
@@ -206,7 +230,6 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
             if not matched:
                 parsed_date = now + timedelta(days=1)
 
-    # Parse time
     t = time_str.lower().strip()
     word_to_num = {
         "one": 1, "two": 2, "three": 3, "four": 4,
