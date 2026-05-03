@@ -181,6 +181,8 @@ def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = 
 # ── Calendar helper ───────────────────────────────────────────────────────────
 
 def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
+    date_str = (date_str or "").strip()
+    time_str = (time_str or "").strip()
     now = datetime.now()
     parsed_date = None
 
@@ -246,19 +248,43 @@ def parse_appointment_dt(date_str: str, time_str: str) -> datetime:
     return parsed_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
+def _first_arg_str(args: dict, *keys: str) -> str:
+    """Return the first non-empty string among alternate Vapi/LLM parameter names."""
+    for k in keys:
+        v = args.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return ""
+
+
 def book_on_google_calendar(
     name: str, phone: str, address: str, service_type: str,
     appointment_dt: datetime, notes: str = ""
 ) -> dict:
     try:
         from integrations.gcal import book_appointment
-        return book_appointment(
+        result = book_appointment(
             customer_name=name,
             customer_phone=phone,
             service_type=service_type,
             appointment_dt=appointment_dt,
             notes=f"Address: {address} | {notes}",
         )
+        if result.get("success"):
+            ref = (
+                result.get("event_link")
+                or result.get("html_link")
+                or result.get("event_id")
+                or result.get("id")
+                or ""
+            )
+            print(f"[CALENDAR] Event created: {ref}")
+        else:
+            print(f"[CALENDAR] Event not created: {result.get('error', result)}")
+        return result
     except Exception as e:
         print(f"[CALENDAR] Error: {e}")
         return {"success": False, "error": str(e)}
@@ -279,18 +305,23 @@ async def handle_check_availability(args: dict) -> str:
 
 
 async def handle_book_appointment(args: dict, call_id: str) -> str:
-    name = args.get("name", "Unknown")
-    phone = args.get("phone", "")
-    address = args.get("address", "")
-    zip_code = args.get("zip", "")
-    date = args.get("date", "")
-    time = args.get("time", "")
-    issue = args.get("issue", "HVAC Service")
+    print(f"[BOOKING] bookAppointment invoked call_id={call_id}")
+    raw = args if isinstance(args, dict) else {}
+    name = _first_arg_str(raw, "name", "lead_name", "customerName", "fullName") or "Unknown"
+    phone = _first_arg_str(raw, "phone", "phoneNumber", "lead_phone", "customer_phone", "mobile")
+    address = _first_arg_str(raw, "address", "street", "streetAddress")
+    zip_code = _first_arg_str(raw, "zip", "zip_code", "zipCode", "postalCode", "postal_code")
+    date = _first_arg_str(raw, "date", "appointmentDate", "appointment_date", "preferredDate", "preferred_date")
+    time = _first_arg_str(raw, "time", "appointmentTime", "appointment_time", "preferredTime", "preferred_time")
+    issue = _first_arg_str(raw, "issue", "serviceType", "service_type", "problem", "description", "reason") or "HVAC Service"
 
     full_address = f"{address} {zip_code}".strip()
     appointment_dt = parse_appointment_dt(date, time)
 
-    print(f"[BOOKING] {name} | {phone} | {full_address} | {date} {time} | {issue}")
+    print(
+        f"[BOOKING] name={name!r} phone={phone!r} address={address!r} zip={zip_code!r} "
+        f"date={date!r} time={time!r} issue={issue!r}"
+    )
     print(f"[BOOKING] Parsed datetime: {appointment_dt}")
 
     save_lead_to_postgres(name=name, phone=phone, source="Voice AI - bookAppointment")
@@ -307,10 +338,9 @@ async def handle_book_appointment(args: dict, call_id: str) -> str:
     update_call(call_id, lead_name=name, phone=phone, outcome="appointment_booked")
 
     if result.get("success"):
-        print(f"[BOOKING] ✅ Calendar event: {result.get('event_link')}")
         return f"Appointment booked for {name} on {date} at {time}."
     else:
-        print(f"[BOOKING] ⚠️ Calendar failed: {result.get('error')}")
+        print(f"[BOOKING] Calendar API reported failure: {result.get('error')}")
         return f"Appointment confirmed for {name} on {date} at {time}. Our team will follow up shortly."
 
 
@@ -395,8 +425,8 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
 
         return vapi_tool_response(message, result)
 
-    # ── tool-calls (newer Vapi format) ────────────────────────────────────────
-    if msg_type == "tool-calls":
+    # ── tool-calls (newer Vapi format; some payloads use tool_calls) ──────────
+    if msg_type in ("tool-calls", "tool_calls"):
         tool_call_list = message.get("toolCallList", [])
         results = []
 
