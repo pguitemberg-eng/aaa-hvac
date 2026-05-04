@@ -8,6 +8,8 @@ import os
 import json
 import re
 import sqlite3
+
+import psycopg2
 import httpx
 from datetime import datetime, timedelta
 from typing import Optional
@@ -25,6 +27,7 @@ VAPI_API_KEY = os.getenv("VAPI_API_KEY", "")
 VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID", "")
 VAPI_PHONE_NUMBER_ID = os.getenv("VAPI_PHONE_NUMBER_ID", "")
 DB_PATH = os.getenv("SQLITE_DB_PATH", "memory/hvac_leads.db")
+DEFAULT_CLIENT_ID = int(os.getenv("DEFAULT_CLIENT_ID", "1"))
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 BUSINESS_PHONE = os.getenv("BUSINESS_PHONE", "")
 VAPI_BASE_URL = "https://api.vapi.ai"
@@ -171,6 +174,40 @@ def get_call_outcome(call_id: str) -> Optional[str]:
 
 # ── PostgreSQL helpers ────────────────────────────────────────────────────────
 
+def insert_appointment_postgres(
+    lead_name: str,
+    phone: str,
+    service_type: str,
+    scheduled_at: datetime,
+    client_id: int,
+) -> None:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if not database_url:
+        print("[DB] Appointment not saved: DATABASE_URL not set")
+        return
+    try:
+        conn = psycopg2.connect(database_url)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO appointments (lead_name, phone, service_type, scheduled_at, status, client_id)
+                       VALUES (%s, %s, %s, %s, 'scheduled', %s)""",
+                    (
+                        lead_name or "",
+                        phone or "",
+                        service_type or "",
+                        scheduled_at,
+                        client_id,
+                    ),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        print(f"[DB] PostgreSQL appointment: {lead_name!r} @ {scheduled_at}")
+    except Exception as e:
+        print(f"[DB] PostgreSQL appointment insert error: {e}")
+
+
 def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = "Voice AI"):
     try:
         from db.postgres import get_conn
@@ -292,6 +329,13 @@ def book_on_google_calendar(
                 or ""
             )
             print(f"[CALENDAR] Event created: {ref}")
+            insert_appointment_postgres(
+                lead_name=name,
+                phone=phone,
+                service_type=service_type,
+                scheduled_at=appointment_dt,
+                client_id=DEFAULT_CLIENT_ID,
+            )
         else:
             print(f"[CALENDAR] Event not created: {result.get('error', result)}")
         return result
