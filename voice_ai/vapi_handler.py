@@ -8,9 +8,11 @@ import os
 import json
 import re
 import sqlite3
+import traceback
 
 import psycopg2
 import httpx
+from twilio.rest import Client
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -208,6 +210,51 @@ def insert_appointment_postgres(
         print(f"[DB] PostgreSQL appointment insert error: {e}")
 
 
+def send_appointment_confirmation_sms(
+    lead_name: str, phone: str, scheduled_at: datetime
+) -> None:
+    account_sid = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
+    auth_token = (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
+    from_number = (os.getenv("TWILIO_PHONE_NUMBER") or "").strip()
+    if not all([account_sid, auth_token, from_number]):
+        print("[SMS] Appointment confirmation skipped: missing Twilio env")
+        return
+
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) == 10:
+        to_number = "+1" + digits
+    elif len(digits) == 11 and digits.startswith("1"):
+        to_number = "+" + digits
+    else:
+        print(
+            f"[SMS] Appointment confirmation skipped: could not normalize to E.164 "
+            f"(digits={digits!r}, len={len(digits)})"
+        )
+        return
+
+    print(f"[SMS] Normalized customer phone to E.164: {to_number!r} (raw={phone!r})")
+
+    when = scheduled_at.strftime("%A, %B %d, %Y at %I:%M %p")
+    body = (
+        f"Hi {lead_name}, your HVAC appointment is confirmed for {when}. "
+        "ABC Cooling LLC will see you then! Questions? Call us back anytime."
+    )
+    print(
+        f"[SMS] About to call Twilio messages.create "
+        f"(to={to_number!r}, from={from_number!r}, lead_name={lead_name!r})"
+    )
+    try:
+        client = Client(account_sid, auth_token)
+        client.messages.create(body=body, from_=from_number, to=to_number)
+        print(f"[SMS] Appointment confirmation sent to {to_number}")
+    except Exception as e:
+        print(
+            f"[SMS] Appointment confirmation failed: type={type(e).__name__} "
+            f"str(e)={str(e)!r} repr(e)={repr(e)}"
+        )
+        traceback.print_exc()
+
+
 def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = "Voice AI"):
     try:
         from db.postgres import get_conn
@@ -335,6 +382,11 @@ def book_on_google_calendar(
                 service_type=service_type,
                 scheduled_at=appointment_dt,
                 client_id=DEFAULT_CLIENT_ID,
+            )
+            send_appointment_confirmation_sms(
+                lead_name=name,
+                phone=phone,
+                scheduled_at=appointment_dt,
             )
         else:
             print(f"[CALENDAR] Event not created: {result.get('error', result)}")
