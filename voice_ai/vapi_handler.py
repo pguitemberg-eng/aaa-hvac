@@ -265,8 +265,8 @@ def book_on_google_calendar(
     appointment_dt: datetime, notes: str = ""
 ) -> dict:
     try:
-        from integrations.gcal import book_appointment
-        result = book_appointment(
+        from integrations.gcal import book_google_calendar
+        result = book_google_calendar(
             customer_name=name,
             customer_phone=phone,
             service_type=service_type,
