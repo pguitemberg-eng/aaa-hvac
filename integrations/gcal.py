@@ -90,6 +90,71 @@ def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = 
         print(f"[PostgreSQL] Lead save error: {e}")
 
 
+GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
+GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "")
+
+
+def get_calendar_service():
+    """Build Google Calendar API service (service account)."""
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+
+    scopes = ["https://www.googleapis.com/auth/calendar"]
+    if GOOGLE_CREDENTIALS_JSON:
+        creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+        credentials = service_account.Credentials.from_service_account_info(
+            creds_dict, scopes=scopes
+        )
+        return build("calendar", "v3", credentials=credentials)
+    if GOOGLE_CREDENTIALS_FILE and os.path.exists(GOOGLE_CREDENTIALS_FILE):
+        credentials = service_account.Credentials.from_service_account_file(
+            GOOGLE_CREDENTIALS_FILE, scopes=scopes
+        )
+        return build("calendar", "v3", credentials=credentials)
+    raise ValueError("No Google Calendar credentials (GOOGLE_CREDENTIALS_JSON or GOOGLE_CREDENTIALS_FILE)")
+
+
+def _insert_google_calendar_event(
+    customer_name: str,
+    customer_phone: str,
+    service_type: str,
+    appointment_dt: datetime,
+    notes: str = "",
+) -> dict:
+    """Create calendar event via Google Calendar API."""
+    service = get_calendar_service()
+    end_dt = appointment_dt + timedelta(hours=2)
+    summary = f"HVAC - {service_type} | {customer_name}"
+    description = (
+        f"Customer: {customer_name}\n"
+        f"Phone: {customer_phone}\n"
+        f"Service: {service_type}\n"
+        f"Notes: {notes}\n"
+        f"Booked via: Voice AI"
+    )
+    event = {
+        "summary": summary,
+        "description": description,
+        "start": {"dateTime": appointment_dt.isoformat(), "timeZone": "America/New_York"},
+        "end": {"dateTime": end_dt.isoformat(), "timeZone": "America/New_York"},
+        "reminders": {
+            "useDefault": False,
+            "overrides": [
+                {"method": "email", "minutes": 24 * 60},
+                {"method": "popup", "minutes": 60},
+            ],
+        },
+    }
+    created = service.events().insert(calendarId=GOOGLE_CALENDAR_ID, body=event).execute()
+    return {
+        "success": True,
+        "event_id": created.get("id"),
+        "event_link": created.get("htmlLink"),
+        "summary": summary,
+    }
+
+
 def book_google_calendar(
     customer_name: str,
     customer_phone: str,
@@ -99,8 +164,7 @@ def book_google_calendar(
 ) -> dict:
     """Book appointment on Google Calendar."""
     try:
-        from integrations.gcal import book_appointment
-        result = book_appointment(
+        result = _insert_google_calendar_event(
             customer_name=customer_name,
             customer_phone=customer_phone,
             service_type=service_type,
