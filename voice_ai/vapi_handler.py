@@ -28,6 +28,7 @@ DB_PATH = os.getenv("SQLITE_DB_PATH", "memory/hvac_leads.db")
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 BUSINESS_PHONE = os.getenv("BUSINESS_PHONE", "")
 VAPI_BASE_URL = "https://api.vapi.ai"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 
 # ── Date builders ─────────────────────────────────────────────────────────────
@@ -159,6 +160,15 @@ def update_call(call_id: str, **kwargs):
     conn.close()
 
 
+def get_call_outcome(call_id: str) -> Optional[str]:
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT outcome FROM voice_calls WHERE call_id = ?", (call_id,)
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
 # ── PostgreSQL helpers ────────────────────────────────────────────────────────
 
 def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = "Voice AI"):
@@ -288,6 +298,198 @@ def book_on_google_calendar(
     except Exception as e:
         print(f"[CALENDAR] Error: {e}")
         return {"success": False, "error": str(e)}
+
+
+def collect_transcript_for_llm(message: dict, call: dict) -> str:
+    chunks: list[str] = []
+    t = message.get("transcript")
+    if isinstance(t, str) and t.strip():
+        chunks.append(t.strip())
+    art = message.get("artifact") or call.get("artifact") or {}
+    if isinstance(art, dict):
+        tr = art.get("transcript")
+        if isinstance(tr, str) and tr.strip():
+            chunks.append(tr.strip())
+        for key in ("messages", "messagesOpenAIFormatted", "openaiMessages"):
+            msgs = art.get(key)
+            if not isinstance(msgs, list):
+                continue
+            for m in msgs:
+                if not isinstance(m, dict):
+                    continue
+                c = m.get("content") or m.get("message") or m.get("text")
+                if isinstance(c, str) and c.strip():
+                    chunks.append(c.strip())
+                elif isinstance(c, list):
+                    for block in c:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            tx = block.get("text")
+                            if isinstance(tx, str) and tx.strip():
+                                chunks.append(tx.strip())
+    return "\n\n".join(chunks)
+
+
+_BOOKING_EXTRACT_SYSTEM = """You extract HVAC appointment booking fields from a phone call transcript.
+Return one JSON object only, with exactly these keys (all string values, use "" if not found):
+"name", "phone", "address", "zip", "date", "time", "issue"
+
+Rules:
+- Fill fields only from what the customer or agent clearly said about scheduling a visit.
+- date: prefer YYYY-MM-DD when year is clear.
+- time: include AM/PM if mentioned.
+
+Do not invent details. If no appointment was discussed, return empty strings for all fields."""
+
+
+def log_openai_extracted_fields(
+    call_id: str,
+    fields: dict,
+    raw_parsed: Optional[dict] = None,
+) -> None:
+    """Log every extracted field explicitly (empty strings included)."""
+    keys = ("name", "phone", "address", "zip", "date", "time", "issue")
+    parts = [f"{k}={fields.get(k, '')!r}" for k in keys]
+    print(f"[BOOKING] OpenAI extraction call_id={call_id} — " + " | ".join(parts))
+    if raw_parsed is not None:
+        try:
+            print(
+                "[BOOKING] OpenAI extraction full parsed JSON: "
+                + json.dumps(raw_parsed, ensure_ascii=False)
+            )
+        except (TypeError, ValueError):
+            print(f"[BOOKING] OpenAI extraction full parsed JSON: {raw_parsed!r}")
+
+
+async def extract_booking_fields_openai(
+    transcript: str, call_id: str
+) -> tuple[Optional[dict], Optional[str]]:
+    """Call OpenAI; always logs normalized fields via log_openai_extracted_fields."""
+    empty_fields = {k: "" for k in ("name", "phone", "address", "zip", "date", "time", "issue")}
+
+    if not OPENAI_API_KEY.strip():
+        log_openai_extracted_fields(call_id, empty_fields, None)
+        return None, "OPENAI_API_KEY not configured"
+
+    text = (transcript or "").strip()
+    if not text:
+        log_openai_extracted_fields(call_id, empty_fields, None)
+        return None, "no transcript text to analyze"
+
+    today = datetime.now().strftime("%A, %B %d, %Y (%Y-%m-%d)")
+    user_content = (
+        f"Today's date (for resolving relative dates): {today}\n\n"
+        f"--- CALL TRANSCRIPT ---\n{text[:48000]}"
+    )
+    payload = {
+        "model": "gpt-4o-mini",
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": _BOOKING_EXTRACT_SYSTEM},
+            {"role": "user", "content": user_content},
+        ],
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=90.0,
+            )
+    except Exception as e:
+        log_openai_extracted_fields(call_id, empty_fields, None)
+        return None, f"OpenAI request error: {e}"
+
+    if resp.status_code != 200:
+        log_openai_extracted_fields(call_id, empty_fields, None)
+        return None, f"OpenAI HTTP {resp.status_code}: {resp.text[:800]}"
+
+    try:
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+    except Exception as e:
+        log_openai_extracted_fields(call_id, empty_fields, None)
+        print(f"[BOOKING] OpenAI extraction response shape error: {e!r}")
+        return None, f"OpenAI response shape error: {e}"
+
+    try:
+        obj = json.loads(content)
+    except Exception as e:
+        log_openai_extracted_fields(call_id, empty_fields, None)
+        print(f"[BOOKING] OpenAI extraction raw content (JSON decode failed): {content!r}")
+        return None, f"OpenAI response parse error: {e}"
+
+    if not isinstance(obj, dict):
+        log_openai_extracted_fields(call_id, empty_fields, None)
+        return None, "OpenAI returned non-object JSON"
+
+    fields = {k: str(obj.get(k, "") or "").strip() for k in empty_fields}
+    log_openai_extracted_fields(call_id, fields, obj)
+
+    missing = [k for k in ("name", "phone", "address", "zip", "date", "time", "issue") if not fields[k]]
+    if missing:
+        return None, f"incomplete extraction (empty: {', '.join(missing)})"
+    if fields["name"].lower() in ("unknown", "unknown caller"):
+        return None, "incomplete extraction (name not usable)"
+
+    return fields, None
+
+
+async def end_of_call_auto_book_from_transcript_openai(
+    message: dict, call: dict, call_id: str
+) -> None:
+    if get_call_outcome(call_id) == "appointment_booked":
+        return
+
+    blob = collect_transcript_for_llm(message, call)
+    print(f"[BOOKING] end-of-call auto-book attempt call_id={call_id} (OpenAI extraction)")
+
+    fields, err = await extract_booking_fields_openai(blob, call_id)
+    if err or not fields:
+        print(f"[BOOKING_FAILED] {err or 'extraction failed'}")
+        return
+
+    name = fields["name"]
+    phone = fields["phone"]
+    address = fields["address"]
+    zip_code = fields["zip"]
+    date_s = fields["date"]
+    time_s = fields["time"]
+    issue = fields["issue"] or "HVAC Service"
+    full_address = f"{address} {zip_code}".strip()
+
+    try:
+        appointment_dt = parse_appointment_dt(date_s, time_s)
+    except Exception as e:
+        print(f"[BOOKING_FAILED] date/time parse error: {e}")
+        return
+
+    print(f"[BOOKING] Parsed datetime for auto-book: {appointment_dt}")
+
+    save_lead_to_postgres(
+        name=name,
+        phone=phone,
+        source="Voice AI - end-of-call OpenAI auto-book",
+    )
+
+    result = book_on_google_calendar(
+        name=name,
+        phone=phone,
+        address=full_address,
+        service_type=issue,
+        appointment_dt=appointment_dt,
+        notes="Booked via Voice AI (end-of-call transcript)",
+    )
+
+    if result.get("success"):
+        update_call(call_id, lead_name=name, phone=phone, outcome="appointment_booked")
+    else:
+        print(f"[BOOKING_FAILED] calendar not created: {result.get('error')}")
 
 
 # ── Vapi Tool Handlers ────────────────────────────────────────────────────────
@@ -495,6 +697,8 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
                 phone=customer_number,
                 source="Voice AI - end-of-call"
             )
+
+        await end_of_call_auto_book_from_transcript_openai(message, call, call_id)
 
         return JSONResponse({"status": "logged"})
 
