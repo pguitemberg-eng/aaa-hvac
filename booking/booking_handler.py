@@ -77,15 +77,14 @@ def save_booking(data: dict) -> None:
             """
             INSERT INTO appointments
                 (lead_name, phone, email, service_type, scheduled_at, status, client_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, 'scheduled', %s)
             """,
             (
-                data.get("name", "Customer"),
+                data.get("name", ""),
                 data.get("phone", ""),
                 data.get("email", ""),
                 data.get("service_type", "HVAC service"),
                 data.get("scheduled_at"),
-                "scheduled",
                 data.get("client_id", 1),
             ),
         )
