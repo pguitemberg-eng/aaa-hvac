@@ -250,10 +250,10 @@ def scheduled_at_as_eastern_naive(scheduled_at: datetime) -> datetime:
 def insert_appointment_postgres(
     lead_name: str,
     phone: str,
-    email: str = "",
     service_type: str,
     scheduled_at: datetime,
     client_id: int,
+    email: str = "",
 ) -> None:
     database_url = (os.getenv("DATABASE_URL") or "").strip()
     if not database_url:
