@@ -4,6 +4,7 @@ Run: streamlit run dashboard.py
 """
 
 import hashlib
+import html
 import hmac
 import os
 import sys
@@ -56,6 +57,15 @@ st.markdown(
   .lead-row {
     background: #1a2840; border: 1px solid #2a3f5a;
     border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;
+  }
+  .appt-line {
+    background: #1a2840;
+    border: 1px solid #2a3f5a;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow-x: auto;
   }
   .status-ok  { color: #00d4aa; font-weight: 600; }
   .status-bad { color: #f87171; font-weight: 600; }
@@ -481,14 +491,22 @@ def render_calendar_page():
     if st.session_state["auth_user"]["role"] == "admin":
         show_cols = ["client_id"] + show_cols
 
-    st.dataframe(
-        filtered[show_cols],
-        use_container_width=True,
-        height=460,
-        column_config={
-            "scheduled_at": st.column_config.TextColumn("scheduled_at", width="large"),
-        },
-    )
+    def _fmt_sched_inline(dt):
+        if dt is None or pd.isna(dt):
+            return ""
+        if hasattr(dt, "strftime"):
+            return dt.strftime("%a, %b ") + str(dt.day) + dt.strftime(" • %I:%M %p").replace(" 0", " ")
+        return str(dt)
+
+    lines = []
+    for _, row in filtered[show_cols].iterrows():
+        sched = _fmt_sched_inline(row.get("scheduled_at"))
+        lead_name = str(row.get("lead_name") or "Unknown")
+        service_type = str(row.get("service_type") or "HVAC Service")
+        line = f"{sched} — {lead_name} — {service_type}"
+        lines.append(f'<div class="appt-line">{html.escape(line)}</div>')
+
+    st.markdown("".join(lines), unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("Update Appointment Status")
