@@ -176,6 +176,68 @@ def get_call_outcome(call_id: str) -> Optional[str]:
     return row[0] if row else None
 
 
+def log_call_postgres(call_id: str, **kwargs) -> None:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if not database_url:
+        print("[DB] log_call_postgres skipped: DATABASE_URL not set")
+        return
+    try:
+        conn = psycopg2.connect(database_url)
+        try:
+            fields = ", ".join(kwargs.keys())
+            placeholders = ", ".join(["%s"] * len(kwargs))
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO voice_calls (call_id, {fields}) VALUES (%s, {placeholders}) ON CONFLICT (call_id) DO NOTHING",
+                    (call_id, *kwargs.values()),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[DB] log_call_postgres error: {e}")
+
+
+def update_call_postgres(call_id: str, **kwargs) -> None:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if not database_url:
+        print("[DB] update_call_postgres skipped: DATABASE_URL not set")
+        return
+    try:
+        conn = psycopg2.connect(database_url)
+        try:
+            sets = ", ".join(f"{k} = %s" for k in kwargs)
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE voice_calls SET {sets} WHERE call_id = %s",
+                    (*kwargs.values(), call_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[DB] update_call_postgres error: {e}")
+
+
+def get_call_outcome_postgres(call_id: str) -> Optional[str]:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if not database_url:
+        print("[DB] get_call_outcome_postgres skipped: DATABASE_URL not set")
+        return None
+    try:
+        conn = psycopg2.connect(database_url)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT outcome FROM voice_calls WHERE call_id = %s", (call_id,))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        return row[0] if row else None
+    except Exception as e:
+        print(f"[DB] get_call_outcome_postgres error: {e}")
+        return None
+
+
 # ── PostgreSQL helpers ────────────────────────────────────────────────────────
 
 def scheduled_at_as_eastern_naive(scheduled_at: datetime) -> datetime:
@@ -188,6 +250,7 @@ def scheduled_at_as_eastern_naive(scheduled_at: datetime) -> datetime:
 def insert_appointment_postgres(
     lead_name: str,
     phone: str,
+    email: str = "",
     service_type: str,
     scheduled_at: datetime,
     client_id: int,
@@ -202,11 +265,12 @@ def insert_appointment_postgres(
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO appointments (lead_name, phone, service_type, scheduled_at, status, client_id)
-                       VALUES (%s, %s, %s, %s, 'scheduled', %s)""",
+                    """INSERT INTO appointments (lead_name, phone, email, service_type, scheduled_at, status, client_id)
+                       VALUES (%s, %s, %s, %s, %s, 'scheduled', %s)""",
                     (
                         lead_name or "",
                         phone or "",
+                        email or "",
                         service_type or "",
                         scheduled_db,
                         client_id,
@@ -369,7 +433,7 @@ def _first_arg_str(args: dict, *keys: str) -> str:
 
 def book_on_google_calendar(
     name: str, phone: str, address: str, service_type: str,
-    appointment_dt: datetime, notes: str = ""
+    appointment_dt: datetime, notes: str = "", email: str = ""
 ) -> dict:
     try:
         from integrations.gcal import book_google_calendar
@@ -392,6 +456,7 @@ def book_on_google_calendar(
             insert_appointment_postgres(
                 lead_name=name,
                 phone=phone,
+                email=email,
                 service_type=service_type,
                 scheduled_at=appointment_dt,
                 client_id=DEFAULT_CLIENT_ID,
@@ -552,7 +617,7 @@ async def extract_booking_fields_openai(
 async def end_of_call_auto_book_from_transcript_openai(
     message: dict, call: dict, call_id: str
 ) -> None:
-    if get_call_outcome(call_id) == "appointment_booked":
+    if get_call_outcome_postgres(call_id) == "appointment_booked":
         return
 
     blob = collect_transcript_for_llm(message, call)
@@ -593,10 +658,11 @@ async def end_of_call_auto_book_from_transcript_openai(
         service_type=issue,
         appointment_dt=appointment_dt,
         notes="Booked via Voice AI (end-of-call transcript)",
+        email="",
     )
 
     if result.get("success"):
-        update_call(call_id, lead_name=name, phone=phone, outcome="appointment_booked")
+        update_call_postgres(call_id, lead_name=name, phone=phone, outcome="appointment_booked")
     else:
         print(f"[BOOKING_FAILED] calendar not created: {result.get('error')}")
 
@@ -624,6 +690,7 @@ async def handle_book_appointment(args: dict, call_id: str) -> str:
     )
     name = _first_arg_str(raw, "name", "lead_name", "customerName", "fullName") or "Unknown"
     phone = _first_arg_str(raw, "phone", "phoneNumber", "lead_phone", "customer_phone", "mobile")
+    email = _first_arg_str(raw, "email", "emailAddress", "email_address", "customer_email")
     address = _first_arg_str(raw, "address", "street", "streetAddress")
     zip_code = _first_arg_str(raw, "zip", "zip_code", "zipCode", "postalCode", "postal_code")
     date = _first_arg_str(raw, "date", "appointmentDate", "appointment_date", "preferredDate", "preferred_date")
@@ -662,9 +729,10 @@ async def handle_book_appointment(args: dict, call_id: str) -> str:
         service_type=issue,
         appointment_dt=appointment_dt,
         notes="Booked via Voice AI",
+        email=email,
     )
 
-    update_call(call_id, lead_name=name, phone=phone, outcome="appointment_booked")
+    update_call_postgres(call_id, lead_name=name, phone=phone, outcome="appointment_booked")
 
     if result.get("success"):
         return f"Appointment booked for {name} on {date} at {time}."
@@ -674,7 +742,7 @@ async def handle_book_appointment(args: dict, call_id: str) -> str:
 
 
 async def handle_end_call(args: dict, call_id: str) -> str:
-    update_call(call_id, outcome="completed")
+    update_call_postgres(call_id, outcome="completed")
     print(f"[ENDCALL] Call {call_id} ended.")
     return "Thank you for calling. Have a great day!"
 
@@ -726,7 +794,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
     if msg_type == "call-started":
         customer_number = call.get("customer", {}).get("number", "")
         direction = call.get("type", "inboundPhoneCall")
-        log_call(call_id, phone=customer_number,
+        log_call_postgres(call_id, phone=customer_number,
                  direction="inbound" if "inbound" in direction.lower() else "outbound")
         return JSONResponse({"status": "logged"})
 
@@ -813,7 +881,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         except Exception:
             duration_sec = 0
 
-        update_call(call_id,
+        update_call_postgres(call_id,
                     duration_sec=max(duration_sec, 0),
                     full_transcript=transcript,
                     transcript_preview=transcript[:200])
@@ -877,7 +945,7 @@ async def trigger_outbound_call(req: OutboundCallRequest):
     call_data = response.json()
     call_id = call_data.get("id", "unknown")
     ensure_voice_calls_table()
-    log_call(call_id, lead_name=req.lead_name, phone=req.phone,
+    log_call_postgres(call_id, lead_name=req.lead_name, phone=req.phone,
              direction="outbound", outcome="pending")
     return {"call_id": call_id, "status": "dialing", "phone": req.phone}
 
