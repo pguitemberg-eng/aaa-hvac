@@ -4,7 +4,6 @@ Run: streamlit run dashboard.py
 """
 
 import hashlib
-import html
 import hmac
 import os
 import sys
@@ -487,36 +486,23 @@ def render_calendar_page():
 
     st.caption(f"{len(filtered)} appointments")
 
-    show_cols = ["lead_name", "phone", "email", "service_type", "status", "notes"]
-    if st.session_state["auth_user"]["role"] == "admin":
-        show_cols = ["client_id"] + show_cols
-
-    def _fmt_sched_inline(dt):
+    def _fmt_appt_date_line(dt):
         if dt is None or pd.isna(dt):
             return ""
         if hasattr(dt, "strftime"):
-            return f"{dt.strftime('%a')}•{dt.strftime('%b')}{dt.day}•{dt.strftime('%I%p').lstrip('0')}"
+            return dt.strftime("%a, %b %d, %Y")
         return str(dt)
 
-    html_rows = ""
-    for _, row in filtered.iterrows():
-        sched = _fmt_sched_inline(row.get("scheduled_at"))
-        name = str(row.get("lead_name") or "")
-        service = str(row.get("service_type") or "")
-        status = str(row.get("status") or "")
-        html_rows += f"<tr><td style='white-space:nowrap;padding:8px;color:#60a5fa'>{sched}</td><td style='padding:8px'><b>{name}</b></td><td style='padding:8px'>{service}</td><td style='padding:8px'>{status}</td></tr>"
-
-    st.markdown(f"""
-<table style='width:100%;border-collapse:collapse'>
-<thead><tr>
-<th style='padding:8px;text-align:left;color:#888'>Date & Time</th>
-<th style='padding:8px;text-align:left;color:#888'>Name</th>
-<th style='padding:8px;text-align:left;color:#888'>Service</th>
-<th style='padding:8px;text-align:left;color:#888'>Status</th>
-</tr></thead>
-<tbody>{html_rows}</tbody>
-</table>
-""", unsafe_allow_html=True)
+    if filtered.empty:
+        st.info("No appointments match your filters.")
+    else:
+        for _, row in filtered.iterrows():
+            with st.container(border=True):
+                date_line = _fmt_appt_date_line(row.get("scheduled_at"))
+                name = str(row.get("lead_name") or "Unknown")
+                service = str(row.get("service_type") or "")
+                st.markdown(f"**{date_line}**")
+                st.markdown(f"{name} — {service}")
 
     st.markdown("---")
     st.subheader("Update Appointment Status")
@@ -555,14 +541,13 @@ def render_calendar_page():
     if upcoming.empty:
         st.info("No upcoming appointments this week.")
     else:
-        st.dataframe(
-            upcoming,
-            use_container_width=True,
-            height=280,
-            column_config={
-                "scheduled_at": st.column_config.TextColumn("scheduled_at", width="large"),
-            },
-        )
+        for _, row in upcoming.iterrows():
+            with st.container(border=True):
+                date_line = _fmt_appt_date_line(row.get("scheduled_at"))
+                name = str(row.get("lead_name") or "Unknown")
+                service = str(row.get("service_type") or "")
+                st.markdown(f"**{date_line}**")
+                st.markdown(f"{name} — {service}")
 
 
 def render_voice_calls_page():
