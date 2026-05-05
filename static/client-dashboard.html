@@ -475,7 +475,35 @@ function render(data){
   document.getElementById('leads-body').innerHTML=leads.map(l=>`<tr><td style="font-weight:600">${l.name}</td><td style="color:var(--text2)">${l.phone||'—'}</td><td style="color:var(--text3)">${l.email||'—'}</td><td><span class="badge badge-${l.status}">${l.status}</span></td><td style="color:var(--text3);font-size:11px">${l.source||'—'}</td><td style="color:var(--text3);font-size:11px">${l.date||'—'}</td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">No leads yet</td></tr>';
 
   // Appointments
-  document.getElementById('appts-list').innerHTML=appointments.map(a=>`<div class="call-row"><div class="call-av" style="border-radius:6px;background:var(--purple-dim);color:var(--purple);font-size:9px;font-weight:700">${a.time}</div><div class="call-info"><div class="call-name">${a.name}</div><div class="call-meta">${a.type||''} · ${a.address||''}</div></div><div class="call-right"><span class="badge badge-${a.status}">${a.status}</span><div class="call-time-label">${a.date||''}</div></div></div>`).join('')||'<div class="empty">No appointments</div>';
+  document.getElementById('appts-list').innerHTML=appointments.map(a=>{
+    const status=(a.status||'scheduled').toLowerCase();
+    const statusColor=status==='scheduled' ? '#00d4aa' : status==='completed' ? '#f59e0b' : status==='cancelled' ? '#f87171' : '#8ca0b8';
+
+    const rawDt=a.scheduled_at||a.time||'';
+    let dt=rawDt?new Date(rawDt):null;
+    if((!dt||Number.isNaN(dt.getTime()))&&(a.date||a.time)){
+      dt=new Date(`${a.date||''} ${a.time||''}`.trim());
+    }
+    const dateStr=dt&&!Number.isNaN(dt.getTime())
+      ? dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})
+      : (a.date||'—');
+    const timeStr=dt&&!Number.isNaN(dt.getTime())
+      ? dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})
+      : (a.time||'—');
+
+    return `<div class="call-row" style="display:block;padding:14px 16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <div style="font-size:18px;font-weight:800;color:var(--text1);line-height:1.2">${a.name||'Unknown'}</div>
+          <div style="margin-top:6px;color:var(--text2);font-size:13px">${dateStr}</div>
+          <div style="margin-top:2px;color:var(--text2);font-size:13px">${timeStr}</div>
+          <div style="margin-top:8px;color:var(--text2);font-size:13px">Service: ${a.type||a.service_type||'—'}</div>
+          <div style="margin-top:2px;color:var(--text2);font-size:13px">Phone: ${a.phone||'—'}</div>
+        </div>
+        <span style="background:${statusColor};color:#0a1628;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:800;text-transform:uppercase">${status}</span>
+      </div>
+    </div>`;
+  }).join('')||'<div class="empty">No appointments</div>';
 
   // Full calls
   document.getElementById('calls-list').innerHTML=calls.map(c=>`<div class="call-row"><div class="call-av">${initials(c.name)}</div><div class="call-info"><div class="call-name">${c.name}</div><div class="call-meta">${c.phone}</div></div><span class="badge badge-${c.type||'inbound'}">${c.type||'inbound'}</span><div class="call-right" style="margin-left:12px"><div class="call-dur">${c.duration||'—'}</div><div class="call-time-label">${c.date||'—'}</div></div></div>`).join('')||'<div class="empty">No calls yet</div>';
