@@ -15,6 +15,7 @@ import httpx
 from twilio.rest import Client
 from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -30,6 +31,7 @@ VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID", "")
 VAPI_PHONE_NUMBER_ID = os.getenv("VAPI_PHONE_NUMBER_ID", "")
 DB_PATH = os.getenv("SQLITE_DB_PATH", "memory/hvac_leads.db")
 DEFAULT_CLIENT_ID = int(os.getenv("DEFAULT_CLIENT_ID", "1"))
+_APPOINTMENT_STORE_TZ = ZoneInfo("America/New_York")
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "HVAC Pro")
 BUSINESS_PHONE = os.getenv("BUSINESS_PHONE", "")
 VAPI_BASE_URL = "https://api.vapi.ai"
@@ -176,6 +178,13 @@ def get_call_outcome(call_id: str) -> Optional[str]:
 
 # ── PostgreSQL helpers ────────────────────────────────────────────────────────
 
+def scheduled_at_as_eastern_naive(scheduled_at: datetime) -> datetime:
+    """Map to America/New_York for TIMESTAMP columns (Eastern wall time, not UTC)."""
+    if scheduled_at.tzinfo is not None:
+        return scheduled_at.astimezone(_APPOINTMENT_STORE_TZ).replace(tzinfo=None)
+    return scheduled_at.replace(tzinfo=_APPOINTMENT_STORE_TZ).replace(tzinfo=None)
+
+
 def insert_appointment_postgres(
     lead_name: str,
     phone: str,
@@ -187,6 +196,7 @@ def insert_appointment_postgres(
     if not database_url:
         print("[DB] Appointment not saved: DATABASE_URL not set")
         return
+    scheduled_db = scheduled_at_as_eastern_naive(scheduled_at)
     try:
         conn = psycopg2.connect(database_url)
         try:
@@ -198,14 +208,17 @@ def insert_appointment_postgres(
                         lead_name or "",
                         phone or "",
                         service_type or "",
-                        scheduled_at,
+                        scheduled_db,
                         client_id,
                     ),
                 )
             conn.commit()
         finally:
             conn.close()
-        print(f"[DB] PostgreSQL appointment: {lead_name!r} @ {scheduled_at}")
+        print(
+            f"[DB] PostgreSQL appointment: {lead_name!r} @ {scheduled_db} "
+            f"(America/New_York, stored as local wall time)"
+        )
     except Exception as e:
         print(f"[DB] PostgreSQL appointment insert error: {e}")
 
