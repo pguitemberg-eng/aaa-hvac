@@ -487,7 +487,7 @@ def render_calendar_page():
 
     st.caption(f"{len(filtered)} appointments")
 
-    show_cols = ["lead_name", "phone", "email", "service_type", "scheduled_at", "status", "notes"]
+    show_cols = ["lead_name", "phone", "email", "service_type", "status", "notes"]
     if st.session_state["auth_user"]["role"] == "admin":
         show_cols = ["client_id"] + show_cols
 
@@ -498,28 +498,25 @@ def render_calendar_page():
             return f"{dt.month}/{dt.day} {dt.strftime('%I%p').lstrip('0')}"
         return str(dt)
 
-    st.markdown("""
-<style>
-.appt-line {
-    padding: 8px 12px;
-    border-bottom: 1px solid #333;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 14px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-    lines = []
-    for _, row in filtered[show_cols].iterrows():
+    html_rows = ""
+    for _, row in filtered.iterrows():
         sched = _fmt_sched_inline(row.get("scheduled_at"))
-        lead_name = str(row.get("lead_name") or "Unknown")
-        service_type = str(row.get("service_type") or "HVAC Service")
-        line = f"{sched} — {lead_name} — {service_type}"
-        lines.append(f'<div class="appt-line">{html.escape(line)}</div>')
+        name = str(row.get("lead_name") or "")
+        service = str(row.get("service_type") or "")
+        status = str(row.get("status") or "")
+        html_rows += f"<tr><td style='white-space:nowrap;padding:8px;color:#60a5fa'>{sched}</td><td style='padding:8px'><b>{name}</b></td><td style='padding:8px'>{service}</td><td style='padding:8px'>{status}</td></tr>"
 
-    st.markdown("".join(lines), unsafe_allow_html=True)
+    st.markdown(f"""
+<table style='width:100%;border-collapse:collapse'>
+<thead><tr>
+<th style='padding:8px;text-align:left;color:#888'>Date & Time</th>
+<th style='padding:8px;text-align:left;color:#888'>Name</th>
+<th style='padding:8px;text-align:left;color:#888'>Service</th>
+<th style='padding:8px;text-align:left;color:#888'>Status</th>
+</tr></thead>
+<tbody>{html_rows}</tbody>
+</table>
+""", unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("Update Appointment Status")
