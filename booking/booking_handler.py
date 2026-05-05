@@ -73,6 +73,22 @@ def save_booking(data: dict) -> None:
                 data.get("raw_payload", "")[:2000],
             ),
         )
+        conn.execute(
+            """
+            INSERT INTO appointments
+                (lead_name, phone, email, service_type, scheduled_at, status, client_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                data.get("name", "Customer"),
+                data.get("phone", ""),
+                data.get("email", ""),
+                data.get("service_type", "HVAC service"),
+                data.get("scheduled_at"),
+                "scheduled",
+                data.get("client_id", 1),
+            ),
+        )
         conn.commit()
 
 
@@ -317,6 +333,7 @@ async def handle_calendly_webhook(request: Request, background_tasks: Background
                 booking_data["service_type"] = booking_data["service_type"] or lead.get("service_type", "")
                 booking_data["urgency"]       = booking_data["urgency"]       or lead.get("urgency", "routine")
                 booking_data["address"]       = booking_data["address"]       or lead.get("address", "")
+                booking_data["client_id"]     = lead.get("client_id", 1)
 
         background_tasks.add_task(process_confirmed_booking, booking_data)
         return JSONResponse({"status": "processing", "event": event_type})

@@ -380,8 +380,6 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-h
 const API='https://api.midvio.com';
 let CC=null;
 
-function mock(){return{leads:[{id:1,name:'James Rivera',phone:'(516)555-0192',email:'j@gmail.com',status:'qualified',source:'Voice AI',date:'Apr 28'},{id:2,name:'Sarah Chen',phone:'(718)555-0334',email:'s@yahoo.com',status:'new',source:'Web Form',date:'Apr 27'},{id:3,name:'Mike Johnson',phone:'(631)555-0871',email:'m@gmail.com',status:'contacted',source:'Voice AI',date:'Apr 26'}],appointments:[{id:1,name:'James Rivera',address:'142 Oak St, Brooklyn',time:'09:00',ampm:'AM',date:'Apr 29',status:'scheduled',type:'AC Inspection'},{id:2,name:'Sarah Chen',address:'88 Pine Ave, Queens',time:'02:30',ampm:'PM',date:'Apr 29',status:'scheduled',type:'HVAC Install'}],calls:[{id:1,name:'James Rivera',phone:'(516)555-0192',type:'inbound',duration:'4:32',status:'qualified',date:'Today 10:14 AM'},{id:2,name:'Unknown',phone:'(718)555-0998',type:'inbound',duration:'1:12',status:'new',date:'Today 9:01 AM'},{id:3,name:'Sarah Chen',phone:'(718)555-0334',type:'outbound',duration:'2:45',status:'contacted',date:'Yesterday 3:22 PM'}],pipeline:[]};}
-
 async function doLogin(){
   const u=document.getElementById('lu').value.trim();
   const p=document.getElementById('lp').value;
@@ -420,7 +418,10 @@ async function loadData(){
   try{
     const[lr,ar,cr]=await Promise.all([fetch(`${API}/leads?client_id=${CC.id}`),fetch(`${API}/appointments?client_id=${CC.id}`),fetch(`${API}/voice-calls?client_id=${CC.id}`)]);
     data={leads:(await lr.json()).leads||[],appointments:(await ar.json()).appointments||[],calls:(await cr.json()).calls||[],pipeline:[]};
-  }catch(e){data=mock();}
+  }catch(e){
+    console.error('Failed to load dashboard data from API', e);
+    data={leads:[],appointments:[],calls:[],pipeline:[]};
+  }
   render(data);
 }
 
