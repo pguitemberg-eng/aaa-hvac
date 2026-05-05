@@ -498,11 +498,30 @@ def render_calendar_page():
     else:
         for _, row in filtered.iterrows():
             with st.container(border=True):
-                date_line = _fmt_appt_date_line(row.get("scheduled_at"))
-                name = str(row.get("lead_name") or "Unknown")
-                service = str(row.get("service_type") or "")
-                st.markdown(f"**{date_line}**")
-                st.markdown(f"{name} — {service}")
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    name = str(row.get("lead_name") or "Unknown")
+                    phone = str(row.get("phone") or "—")
+                    email = str(row.get("email") or "—")
+                    service = str(row.get("service_type") or "—")
+                    notes = str(row.get("notes") or "—")
+                    dt = row.get("scheduled_at")
+                    if dt is not None and not pd.isna(dt):
+                        date_str = pd.to_datetime(dt).strftime("%A, %B %d, %Y")
+                        time_str = pd.to_datetime(dt).strftime("%I:%M %p")
+                    else:
+                        date_str = "—"
+                        time_str = "—"
+                    st.markdown(f"### {name}")
+                    st.markdown(f"📅 **{date_str}** at **{time_str}**")
+                    st.markdown(f"🔧 **Service:** {service}")
+                    st.markdown(f"📞 **Phone:** {phone}")
+                    st.markdown(f"📧 **Email:** {email}")
+                    st.markdown(f"📝 **Notes:** {notes}")
+                with col2:
+                    status = str(row.get("status") or "scheduled")
+                    color = "#00d4aa" if status == "scheduled" else "#f59e0b" if status == "completed" else "#f87171"
+                    st.markdown(f'<div style="text-align:right"><span style="background:{color};color:#000;padding:4px 12px;border-radius:20px;font-weight:700;font-size:13px;">{status.upper()}</span></div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("Update Appointment Status")
