@@ -481,7 +481,14 @@ def render_calendar_page():
     if st.session_state["auth_user"]["role"] == "admin":
         show_cols = ["client_id"] + show_cols
 
-    st.dataframe(filtered[show_cols], use_container_width=True, height=460)
+    st.dataframe(
+        filtered[show_cols],
+        use_container_width=True,
+        height=460,
+        column_config={
+            "scheduled_at": st.column_config.TextColumn("scheduled_at", width="large"),
+        },
+    )
 
     st.markdown("---")
     st.subheader("Update Appointment Status")
@@ -520,7 +527,14 @@ def render_calendar_page():
     if upcoming.empty:
         st.info("No upcoming appointments this week.")
     else:
-        st.dataframe(upcoming, use_container_width=True, height=280)
+        st.dataframe(
+            upcoming,
+            use_container_width=True,
+            height=280,
+            column_config={
+                "scheduled_at": st.column_config.TextColumn("scheduled_at", width="large"),
+            },
+        )
 
 
 def render_voice_calls_page():
