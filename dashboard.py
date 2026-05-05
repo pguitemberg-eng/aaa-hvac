@@ -498,6 +498,19 @@ def render_calendar_page():
             return dt.strftime("%a, %b ") + str(dt.day) + dt.strftime(" • %I:%M %p").replace(" 0", " ")
         return str(dt)
 
+    st.markdown("""
+<style>
+.appt-line {
+    padding: 8px 12px;
+    border-bottom: 1px solid #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 14px;
+}
+</style>
+""", unsafe_allow_html=True)
+
     lines = []
     for _, row in filtered[show_cols].iterrows():
         sched = _fmt_sched_inline(row.get("scheduled_at"))
