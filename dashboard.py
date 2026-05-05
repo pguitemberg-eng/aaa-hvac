@@ -495,7 +495,7 @@ def render_calendar_page():
         if dt is None or pd.isna(dt):
             return ""
         if hasattr(dt, "strftime"):
-            return f"{dt.month}/{dt.day} {dt.strftime('%I%p').lstrip('0')}"
+            return f"{dt.strftime('%a')}•{dt.strftime('%b')}{dt.day}•{dt.strftime('%I%p').lstrip('0')}"
         return str(dt)
 
     html_rows = ""
