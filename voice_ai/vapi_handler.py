@@ -176,6 +176,46 @@ def get_call_outcome(call_id: str) -> Optional[str]:
     return row[0] if row else None
 
 
+def ensure_voice_calls_postgres() -> None:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if not database_url:
+        return
+    try:
+        conn = psycopg2.connect(database_url)
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS voice_calls (
+                    id SERIAL PRIMARY KEY,
+                    call_id TEXT UNIQUE,
+                    client_id INTEGER,
+                    lead_name TEXT,
+                    phone TEXT,
+                    direction TEXT DEFAULT 'inbound',
+                    duration_sec INTEGER DEFAULT 0,
+                    outcome TEXT DEFAULT 'pending',
+                    transcript_preview TEXT,
+                    full_transcript TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            cur.execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS call_id TEXT")
+            cur.execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS outcome TEXT DEFAULT 'pending'")
+            cur.execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS lead_name TEXT")
+            cur.execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS phone TEXT")
+            cur.execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS direction TEXT DEFAULT 'inbound'")
+            cur.execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS duration_sec INTEGER DEFAULT 0")
+            cur.execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS transcript_preview TEXT")
+            cur.execute("ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS client_id INTEGER")
+        conn.commit()
+        conn.close()
+        print("[DB] voice_calls PostgreSQL schema ensured")
+    except Exception as e:
+        print(f"[DB] ensure_voice_calls_postgres error: {e}")
+
+
+ensure_voice_calls_postgres()
+
+
 def log_call_postgres(call_id: str, **kwargs) -> None:
     database_url = (os.getenv("DATABASE_URL") or "").strip()
     if not database_url:
