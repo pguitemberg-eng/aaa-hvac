@@ -627,15 +627,29 @@ async def handle_book_appointment(args: dict, call_id: str) -> str:
     address = _first_arg_str(raw, "address", "street", "streetAddress")
     zip_code = _first_arg_str(raw, "zip", "zip_code", "zipCode", "postalCode", "postal_code")
     date = _first_arg_str(raw, "date", "appointmentDate", "appointment_date", "preferredDate", "preferred_date")
-    time = _first_arg_str(raw, "time", "appointmentTime", "appointment_time", "preferredTime", "preferred_time")
+    time = _first_arg_str(raw, "time", "appointmentTime", "preferredTime", "preferred_time")
+    appointment_time_raw = _first_arg_str(raw, "appointment_time")
     issue = _first_arg_str(raw, "issue", "serviceType", "service_type", "problem", "description", "reason") or "HVAC Service"
 
     full_address = f"{address} {zip_code}".strip()
-    appointment_dt = parse_appointment_dt(date, time)
+    # Some Vapi payloads send date-only values in appointment_time (e.g. "2026-05-08").
+    # Use it as a date fallback, then apply a separate time field when needed.
+    date_for_parse = date or appointment_time_raw
+    appointment_dt = parse_appointment_dt(date_for_parse, time)
+    if (
+        appointment_dt.hour == 0
+        and appointment_dt.minute == 0
+        and appointment_dt.second == 0
+        and time
+    ):
+        appointment_dt = parse_appointment_dt(date_for_parse, time)
+        print(
+            f"[BOOKING] Midnight parse detected; rebuilt datetime using separate time field: {time!r}"
+        )
 
     print(
         f"[BOOKING] name={name!r} phone={phone!r} address={address!r} zip={zip_code!r} "
-        f"date={date!r} time={time!r} issue={issue!r}"
+        f"date={date!r} appointment_time_raw={appointment_time_raw!r} time={time!r} issue={issue!r}"
     )
     print(f"[BOOKING] Parsed datetime: {appointment_dt}")
 
