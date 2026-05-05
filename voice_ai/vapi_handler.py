@@ -618,6 +618,10 @@ async def handle_check_availability(args: dict) -> str:
 async def handle_book_appointment(args: dict, call_id: str) -> str:
     print(f"[BOOKING] bookAppointment invoked call_id={call_id}")
     raw = args if isinstance(args, dict) else {}
+    print(
+        f"[BOOKING] raw appointment_time from Vapi (before parse): {raw.get('appointment_time')!r} "
+        f"| raw keys: {list(raw.keys())}"
+    )
     name = _first_arg_str(raw, "name", "lead_name", "customerName", "fullName") or "Unknown"
     phone = _first_arg_str(raw, "phone", "phoneNumber", "lead_phone", "customer_phone", "mobile")
     address = _first_arg_str(raw, "address", "street", "streetAddress")
