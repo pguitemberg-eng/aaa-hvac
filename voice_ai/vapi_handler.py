@@ -1016,6 +1016,11 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         customer_number = call.get("customer", {}).get("number", "")
         customer_name = call.get("customer", {}).get("name", "Unknown Caller")
         issue_hint = extract_issue_hint_from_webhook(message)
+        print(f"[VAPI END] customer phone extracted: {customer_number!r}")
+        if resolved_client_id == DEFAULT_CLIENT_ID:
+            print(f"[VAPI END] client_id defaulted to DEFAULT_CLIENT_ID={DEFAULT_CLIENT_ID}")
+        else:
+            print(f"[VAPI END] client_id resolved from called number: {resolved_client_id}")
 
         try:
             started = call.get("startedAt", "")
@@ -1039,12 +1044,16 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
             source = f"Voice AI - {msg_type}"
             if issue_hint:
                 source = f"{source} | issue: {issue_hint}"
-            save_lead_to_postgres(
-                name=customer_name,
-                phone=customer_number,
-                source=source,
-                client_id=resolved_client_id,
-            )
+            print("SAVING LEAD NOW")
+            try:
+                save_lead_to_postgres(
+                    name=customer_name,
+                    phone=customer_number,
+                    source=source,
+                    client_id=resolved_client_id,
+                )
+            except Exception as e:
+                print(f"[VAPI END] save_lead_to_postgres exception: {e}")
 
         if msg_type == "end-of-call-report":
             await end_of_call_auto_book_from_transcript_openai(message, call, call_id)
