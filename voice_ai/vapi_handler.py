@@ -519,6 +519,37 @@ def collect_transcript_for_llm(message: dict, call: dict) -> str:
     return "\n\n".join(chunks)
 
 
+def extract_issue_hint_from_webhook(message: dict) -> str:
+    """Best-effort issue extraction from webhook tool/function payloads."""
+    def _from_args(args: dict) -> str:
+        return _first_arg_str(
+            args,
+            "issue", "serviceType", "service_type", "problem", "description", "reason"
+        )
+
+    func_call = message.get("functionCall", {})
+    if isinstance(func_call, dict):
+        args = func_call.get("parameters", {})
+        if isinstance(args, dict):
+            issue = _from_args(args)
+            if issue:
+                return issue
+
+    for tool_call in message.get("toolCallList", []) or []:
+        args = (tool_call.get("function", {}) or {}).get("arguments", {})
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except Exception:
+                args = {}
+        if isinstance(args, dict):
+            issue = _from_args(args)
+            if issue:
+                return issue
+
+    return ""
+
+
 _BOOKING_EXTRACT_SYSTEM = """You extract HVAC appointment booking fields from a phone call transcript.
 Return one JSON object only, with exactly these keys (all string values, use "" if not found):
 "name", "phone", "address", "zip", "date", "time", "issue"
@@ -803,6 +834,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
     call = message.get("call", {})
     call_id = call.get("id", "unknown")
 
+    print(f"[VAPI] Incoming webhook event_type={msg_type!r} call_id={call_id}")
     print(f"[VAPI] Event: {msg_type} | Call: {call_id}")
     print(f"[VAPI] Body: {json.dumps(body)[:500]}")
 
@@ -878,11 +910,12 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         print(f"[VAPI] tool-calls results: {json.dumps(results)[:300]}")
         return JSONResponse({"results": results})
 
-    # ── end-of-call-report ────────────────────────────────────────────────────
-    if msg_type == "end-of-call-report":
+    # ── end-of-call-report / call-ended ──────────────────────────────────────
+    if msg_type in ("end-of-call-report", "call-ended"):
         transcript = message.get("transcript", "")
         customer_number = call.get("customer", {}).get("number", "")
         customer_name = call.get("customer", {}).get("name", "Unknown Caller")
+        issue_hint = extract_issue_hint_from_webhook(message)
 
         try:
             started = call.get("startedAt", "")
@@ -903,13 +936,17 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
                     transcript_preview=transcript[:200])
 
         if customer_number:
+            source = f"Voice AI - {msg_type}"
+            if issue_hint:
+                source = f"{source} | issue: {issue_hint}"
             save_lead_to_postgres(
                 name=customer_name,
                 phone=customer_number,
-                source="Voice AI - end-of-call"
+                source=source
             )
 
-        await end_of_call_auto_book_from_transcript_openai(message, call, call_id)
+        if msg_type == "end-of-call-report":
+            await end_of_call_auto_book_from_transcript_openai(message, call, call_id)
 
         return JSONResponse({"status": "logged"})
 
