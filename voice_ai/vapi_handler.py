@@ -226,8 +226,33 @@ def ensure_clients_phone_number_postgres() -> None:
         print(f"[DB] ensure clients.phone_number error: {e}")
 
 
+def debug_check_leads_source_column() -> None:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if not database_url:
+        print("[DB] leads.source check skipped: DATABASE_URL not set")
+        return
+    try:
+        conn = psycopg2.connect(database_url)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'leads' AND column_name = 'source'
+                LIMIT 1
+                """
+            )
+            has_source = cur.fetchone() is not None
+        conn.close()
+        print(f"[DB] leads table has 'source' column: {has_source}")
+    except Exception as e:
+        print(f"[DB] leads.source column check error: {e}")
+        traceback.print_exc()
+
+
 ensure_voice_calls_postgres()
 ensure_clients_phone_number_postgres()
+debug_check_leads_source_column()
 
 
 def log_call_postgres(call_id: str, **kwargs) -> None:
@@ -447,6 +472,7 @@ def save_lead_to_postgres(
         print(f"[DB] Lead saved: {name} - {phone}")
     except Exception as e:
         print(f"[DB] Lead save error: {e}")
+        traceback.print_exc()
 
 
 # ── Calendar helper ───────────────────────────────────────────────────────────
@@ -1045,6 +1071,12 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
             if issue_hint:
                 source = f"{source} | issue: {issue_hint}"
             print("SAVING LEAD NOW")
+            print(
+                f"[VAPI END SAVE VALUES] client_id={resolved_client_id!r} "
+                f"customer_name={customer_name!r} "
+                f"customer_phone={customer_number!r} "
+                f"issue_type={issue_hint!r}"
+            )
             try:
                 save_lead_to_postgres(
                     name=customer_name,
@@ -1054,6 +1086,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
                 )
             except Exception as e:
                 print(f"[VAPI END] save_lead_to_postgres exception: {e}")
+                traceback.print_exc()
 
         if msg_type == "end-of-call-report":
             await end_of_call_auto_book_from_transcript_openai(message, call, call_id)
