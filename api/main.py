@@ -41,6 +41,30 @@ def scheduler_listener(event):
         logger.info(f"[SCHEDULER] Job {event.job_id} completed successfully")
 
 
+def ensure_leads_table() -> None:
+    """Startup auto-migration so leads table always exists."""
+    from db.postgres import get_conn
+    with get_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS leads (
+                    id SERIAL PRIMARY KEY,
+                    client_id INTEGER,
+                    name VARCHAR(255),
+                    phone VARCHAR(50),
+                    email VARCHAR(255),
+                    status VARCHAR(50) DEFAULT 'new',
+                    source VARCHAR(100),
+                    issue_type VARCHAR(255),
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+                """
+            )
+        conn.commit()
+
+
 def get_allowed_origins() -> list[str]:
     origins = [
         "http://localhost:8000",
@@ -83,6 +107,11 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"[MAIN] Anthropic key loaded: {str(anthropic_key_loaded).lower()}")
     scheduler.add_listener(scheduler_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
+    try:
+        ensure_leads_table()
+        logger.info("[MAIN] leads table ensured on startup")
+    except Exception as e:
+        logger.warning(f"[MAIN] leads table migration failed (non-fatal): {e}")
 
     # ── Appointment reminders every 30 min ────────────────────────────────────
     scheduler.add_job(
