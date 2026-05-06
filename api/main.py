@@ -351,19 +351,38 @@ async def get_clients():
 
 @app.post("/client-login")
 async def client_login(data: dict):
+    import bcrypt
     import hashlib
     try:
         from db.postgres import get_conn
-        hashed = hashlib.sha256(data['password'].encode()).hexdigest()
+        db_url = (os.getenv("DATABASE_URL", "") or "").strip()
+        print(f"[CLIENT-LOGIN] DATABASE_URL prefix: {db_url[:50]!r}")
+        print(f"[CLIENT-LOGIN] username lookup: {data.get('username')!r}")
         with get_conn() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "SELECT id, company_name, username, active FROM clients WHERE username = %s AND password_hash = %s",
-                    (data['username'], hashed)
+                    "SELECT id, company_name, username, active, password_hash FROM clients WHERE username = %s",
+                    (data['username'],)
                 )
                 row = cursor.fetchone()
-                if row and row[3]:
-                    return {"ok": True, "client_id": row[0], "company_name": row[1], "username": row[2]}
+                print(f"[CLIENT-LOGIN] user found (username exists): {bool(row)}")
+                if row:
+                    stored_hash = row[4] or ""
+                    password_ok = False
+                    try:
+                        if stored_hash.startswith("$2a$") or stored_hash.startswith("$2b$") or stored_hash.startswith("$2y$"):
+                            password_ok = bcrypt.checkpw(data['password'].encode(), stored_hash.encode())
+                    except Exception:
+                        password_ok = False
+
+                    if not password_ok:
+                        legacy_hash = hashlib.sha256(data['password'].encode()).hexdigest()
+                        password_ok = (legacy_hash == stored_hash)
+
+                    if row[3] and password_ok:
+                        return {"ok": True, "client_id": row[0], "company_name": row[1], "username": row[2]}
+                if row and not row[3]:
+                    return {"ok": False, "detail": "Account disabled"}
                 return {"ok": False, "detail": "Invalid credentials"}
     except Exception as e:
         return {"ok": False, "detail": str(e)}
