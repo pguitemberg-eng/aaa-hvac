@@ -181,6 +181,7 @@ class ResetClientRequest(BaseModel):
     username: str
     password: str
     business_name: str
+    phone_number: str = ""
 
 
 @app.post("/auth/dashboard")
@@ -396,16 +397,18 @@ async def admin_reset_client(req: ResetClientRequest):
         password_hash = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
         with get_conn() as conn:
             with conn.cursor() as cursor:
+                cursor.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone_number TEXT")
                 cursor.execute(
                     """
-                    INSERT INTO clients (username, password_hash, company_name, active)
-                    VALUES (%s, %s, %s, true)
+                    INSERT INTO clients (username, password_hash, company_name, phone_number, active)
+                    VALUES (%s, %s, %s, %s, true)
                     ON CONFLICT (username) DO UPDATE
                     SET password_hash = EXCLUDED.password_hash,
                         company_name = EXCLUDED.company_name,
+                        phone_number = EXCLUDED.phone_number,
                         active = true
                     """,
-                    (req.username, password_hash, req.business_name),
+                    (req.username, password_hash, req.business_name, req.phone_number),
                 )
             conn.commit()
         return {"ok": True, "username": req.username}

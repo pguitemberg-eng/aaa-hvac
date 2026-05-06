@@ -211,7 +211,23 @@ def ensure_voice_calls_postgres() -> None:
         print(f"[DB] ensure_voice_calls_postgres error: {e}")
 
 
+def ensure_clients_phone_number_postgres() -> None:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if not database_url:
+        return
+    try:
+        conn = psycopg2.connect(database_url)
+        with conn.cursor() as cur:
+            cur.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone_number TEXT")
+        conn.commit()
+        conn.close()
+        print("[DB] clients.phone_number ensured")
+    except Exception as e:
+        print(f"[DB] ensure clients.phone_number error: {e}")
+
+
 ensure_voice_calls_postgres()
+ensure_clients_phone_number_postgres()
 
 
 def log_call_postgres(call_id: str, **kwargs) -> None:
@@ -277,6 +293,68 @@ def get_call_outcome_postgres(call_id: str) -> Optional[str]:
 
 
 # ── PostgreSQL helpers ────────────────────────────────────────────────────────
+
+def extract_called_number_from_vapi_payload(body: dict, message: dict, call: dict) -> str:
+    """Try common Vapi webhook locations for the business number that was called."""
+    candidates = []
+
+    def _append(value):
+        if isinstance(value, str) and value.strip():
+            candidates.append(value.strip())
+        elif isinstance(value, dict):
+            for k in ("number", "phoneNumber", "phone", "e164"):
+                v = value.get(k)
+                if isinstance(v, str) and v.strip():
+                    candidates.append(v.strip())
+
+    _append(call.get("phoneNumber"))
+    _append(call.get("phone_number"))
+    _append(call.get("assistantPhoneNumber"))
+    _append((call.get("assistant") or {}).get("phoneNumber"))
+    _append((call.get("assistant") or {}).get("phone_number"))
+    _append(message.get("phoneNumber"))
+    _append(body.get("phoneNumber"))
+
+    # phoneNumberId is not guaranteed to be the E.164 number but log/keep as last fallback
+    _append(call.get("phoneNumberId"))
+
+    chosen = candidates[0] if candidates else ""
+    print(f"[VAPI] Called-number candidates: {candidates!r} | chosen={chosen!r}")
+    return chosen
+
+
+def lookup_client_id_by_phone_number(phone_number: str) -> Optional[int]:
+    from db.postgres import get_conn
+    pn = (phone_number or "").strip()
+    if not pn:
+        return None
+    digits = re.sub(r"\D", "", pn)
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                if digits:
+                    cur.execute(
+                        """
+                        SELECT id
+                        FROM clients
+                        WHERE regexp_replace(coalesce(phone_number, ''), '\D', '', 'g') = %s
+                        ORDER BY id
+                        LIMIT 1
+                        """,
+                        (digits,),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        return int(row[0])
+                cur.execute(
+                    "SELECT id FROM clients WHERE phone_number = %s ORDER BY id LIMIT 1",
+                    (pn,),
+                )
+                row = cur.fetchone()
+                return int(row[0]) if row else None
+    except Exception as e:
+        print(f"[DB] client lookup by phone_number error: {e}")
+        return None
 
 def insert_appointment_postgres(
     lead_name: str,
@@ -348,7 +426,13 @@ def send_appointment_confirmation_sms(
         traceback.print_exc()
 
 
-def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = "Voice AI"):
+def save_lead_to_postgres(
+    name: str,
+    phone: str,
+    email: str = "",
+    source: str = "Voice AI",
+    client_id: int = DEFAULT_CLIENT_ID,
+):
     try:
         from db.postgres import get_conn
         with get_conn() as conn:
@@ -357,7 +441,7 @@ def save_lead_to_postgres(name: str, phone: str, email: str = "", source: str = 
                     """INSERT INTO leads (client_id, name, phone, email, status, source, created_at)
                        VALUES (%s, %s, %s, %s, %s, %s, NOW())
                        ON CONFLICT DO NOTHING""",
-                    (1, name or "Unknown Caller", phone, email, "new", source)
+                    (client_id, name or "Unknown Caller", phone, email, "new", source)
                 )
             conn.commit()
         print(f"[DB] Lead saved: {name} - {phone}")
@@ -833,9 +917,12 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
     msg_type = message.get("type", "")
     call = message.get("call", {})
     call_id = call.get("id", "unknown")
+    called_number = extract_called_number_from_vapi_payload(body, message, call)
+    resolved_client_id = lookup_client_id_by_phone_number(called_number) or DEFAULT_CLIENT_ID
 
     print(f"[VAPI] Incoming webhook event_type={msg_type!r} call_id={call_id}")
     print(f"[VAPI] Event: {msg_type} | Call: {call_id}")
+    print(f"[VAPI] Resolved client_id={resolved_client_id} from called_number={called_number!r}")
     print(f"[VAPI] Body: {json.dumps(body)[:500]}")
 
     # ── call-started ──────────────────────────────────────────────────────────
@@ -843,7 +930,8 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         customer_number = call.get("customer", {}).get("number", "")
         direction = call.get("type", "inboundPhoneCall")
         log_call_postgres(call_id, phone=customer_number,
-                 direction="inbound" if "inbound" in direction.lower() else "outbound")
+                 direction="inbound" if "inbound" in direction.lower() else "outbound",
+                 client_id=resolved_client_id)
         return JSONResponse({"status": "logged"})
 
     # ── function-call (older Vapi format) ─────────────────────────────────────
@@ -863,7 +951,12 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         elif func_name == "qualify_lead":
             name = func_args.get("lead_name", "")
             phone = func_args.get("lead_phone", "")
-            save_lead_to_postgres(name=name, phone=phone, source="Voice AI - qualify_lead")
+            save_lead_to_postgres(
+                name=name,
+                phone=phone,
+                source="Voice AI - qualify_lead",
+                client_id=resolved_client_id,
+            )
             result = "Perfect, I have all your details. You will receive a confirmation shortly."
         else:
             result = f"Function {func_name} not implemented."
@@ -897,7 +990,12 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
             elif func_name == "qualify_lead":
                 name = func_args.get("lead_name", "")
                 phone = func_args.get("lead_phone", "")
-                save_lead_to_postgres(name=name, phone=phone, source="Voice AI - qualify_lead")
+                save_lead_to_postgres(
+                    name=name,
+                    phone=phone,
+                    source="Voice AI - qualify_lead",
+                    client_id=resolved_client_id,
+                )
                 result = "Perfect, I have all your details. You will receive a confirmation shortly."
             else:
                 result = f"Function {func_name} not implemented."
@@ -942,7 +1040,8 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
             save_lead_to_postgres(
                 name=customer_name,
                 phone=customer_number,
-                source=source
+                source=source,
+                client_id=resolved_client_id,
             )
 
         if msg_type == "end-of-call-report":
