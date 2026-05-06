@@ -917,6 +917,8 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
     msg_type = message.get("type", "")
     call = message.get("call", {})
     call_id = call.get("id", "unknown")
+    print(f"[VAPI EVENT TYPE]: {message.get('type', 'UNKNOWN')}")
+    print(f"[VAPI MESSAGE KEYS]: {list(message.keys())}")
     called_number = extract_called_number_from_vapi_payload(body, message, call)
     resolved_client_id = lookup_client_id_by_phone_number(called_number) or DEFAULT_CLIENT_ID
 
