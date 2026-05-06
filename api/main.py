@@ -65,6 +65,32 @@ def ensure_leads_table() -> None:
         conn.commit()
 
 
+def log_database_startup_info() -> None:
+    """Log DATABASE_URL and public tables for Railway debugging."""
+    try:
+        from db.postgres import get_conn, get_database_url
+
+        url = get_database_url()
+        logger.info(f"[MAIN] DATABASE_URL={url}")
+
+        with get_conn() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = %s
+                    ORDER BY table_name
+                    """,
+                    ("public",),
+                )
+                rows = cursor.fetchall()
+        names = [r[0] for r in rows]
+        logger.info(f"[MAIN] public schema tables ({len(names)}): {names}")
+    except Exception as e:
+        logger.warning(f"[MAIN] startup DB info failed: {e}")
+
+
 def get_allowed_origins() -> list[str]:
     origins = [
         "http://localhost:8000",
@@ -106,6 +132,7 @@ async def lifespan(app: FastAPI):
         anthropic_key_loaded = False
 
     logger.info(f"[MAIN] Anthropic key loaded: {str(anthropic_key_loaded).lower()}")
+    log_database_startup_info()
     scheduler.add_listener(scheduler_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
     try:
         ensure_leads_table()
