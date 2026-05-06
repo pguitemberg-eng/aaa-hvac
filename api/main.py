@@ -177,6 +177,12 @@ class DashboardLoginRequest(BaseModel):
     password: str
 
 
+class ResetClientRequest(BaseModel):
+    username: str
+    password: str
+    business_name: str
+
+
 @app.post("/auth/dashboard")
 async def dashboard_login(req: DashboardLoginRequest):
     expected_user = os.getenv("DASHBOARD_ADMIN_USER", "")
@@ -359,5 +365,30 @@ async def client_login(data: dict):
                 if row and row[3]:
                     return {"ok": True, "client_id": row[0], "company_name": row[1], "username": row[2]}
                 return {"ok": False, "detail": "Invalid credentials"}
+    except Exception as e:
+        return {"ok": False, "detail": str(e)}
+
+
+@app.post("/admin/reset-client")
+async def admin_reset_client(req: ResetClientRequest):
+    import bcrypt
+    try:
+        from db.postgres import get_conn
+        password_hash = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
+        with get_conn() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO clients (username, password_hash, company_name, active)
+                    VALUES (%s, %s, %s, true)
+                    ON CONFLICT (username) DO UPDATE
+                    SET password_hash = EXCLUDED.password_hash,
+                        company_name = EXCLUDED.company_name,
+                        active = true
+                    """,
+                    (req.username, password_hash, req.business_name),
+                )
+            conn.commit()
+        return {"ok": True, "username": req.username}
     except Exception as e:
         return {"ok": False, "detail": str(e)}
