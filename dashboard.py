@@ -209,7 +209,7 @@ def get_appointments(limit=200):
     return query_df(
         f"SELECT id, client_id, lead_name, phone, email, service_type, scheduled_at, "
         f"status, notes, calendly_event_uri, created_at "
-        f"FROM appointments WHERE {where_sql} ORDER BY scheduled_at DESC LIMIT %s",
+        f"FROM appointments WHERE {where_sql} ORDER BY id DESC NULLS LAST LIMIT %s",
         (*where_params, limit),
     )
 

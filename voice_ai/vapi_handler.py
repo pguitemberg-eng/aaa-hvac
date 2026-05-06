@@ -289,6 +289,7 @@ def insert_appointment_postgres(
     try:
         from db.postgres import get_conn
         with get_conn() as conn:
+            print(f"[DB-INSERT] lead_name={lead_name!r} phone={phone!r} email={email!r} service_type={service_type!r} scheduled_at={scheduled_at!r} client_id={client_id}")
             conn.execute(
                 """INSERT INTO appointments 
                    (lead_name, phone, email, service_type, scheduled_at, status, client_id)
