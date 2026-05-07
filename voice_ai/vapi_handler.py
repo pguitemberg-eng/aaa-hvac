@@ -1079,6 +1079,14 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         transcript = message.get("transcript", "")
         customer_number = call.get("customer", {}).get("number", "")
         customer_name = call.get("customer", {}).get("name", "Unknown Caller")
+        resolved_lead_name = (customer_name or "").strip()
+        if not resolved_lead_name or resolved_lead_name.lower() in ("unknown", "unknown caller"):
+            # Best-effort transcript fallback when Vapi customer.name is empty.
+            m = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z'\\-]*(?:\s+[A-Za-z][A-Za-z'\\-]*){0,2})", transcript or "", re.IGNORECASE)
+            if m:
+                resolved_lead_name = m.group(1).strip()
+        if not resolved_lead_name:
+            resolved_lead_name = "Unknown Caller"
         issue_hint = extract_issue_hint_from_webhook(message)
         print(f"[VAPI END] customer phone extracted: {customer_number!r}")
         if resolved_client_id == DEFAULT_CLIENT_ID:
@@ -1105,12 +1113,14 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
             log_call_postgres(
                 call_id,
                 client_id=resolved_client_id,
+                lead_name=resolved_lead_name,
                 phone=customer_number,
                 outcome="completed",
             )
             update_call_postgres(
                 call_id,
                 client_id=resolved_client_id,
+                lead_name=resolved_lead_name,
                 phone=customer_number,
                 duration_sec=max(duration_sec, 0),
                 full_transcript=transcript,
@@ -1120,6 +1130,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
             print(
                 f"[VAPI END] voice_calls saved call_id={call_id!r} "
                 f"client_id={resolved_client_id!r} phone={customer_number!r} "
+                f"lead_name={resolved_lead_name!r} "
                 f"duration_sec={max(duration_sec, 0)!r} transcript_len={len(transcript or '')}"
             )
         except Exception as e:
