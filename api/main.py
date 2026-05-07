@@ -362,12 +362,35 @@ async def get_voice_calls(client_id: int = None):
             with conn.cursor() as cursor:
                 if client_id:
                     cursor.execute(
-                        "SELECT id, caller_name, phone, call_type, duration, status, created_at FROM voice_calls WHERE client_id = %s ORDER BY created_at DESC",
+                        """
+                        SELECT
+                            id,
+                            COALESCE(lead_name, caller_name, '') AS caller_name,
+                            phone,
+                            COALESCE(direction, call_type, '') AS call_type,
+                            COALESCE(duration_sec, duration, 0) AS duration,
+                            COALESCE(outcome, status, 'pending') AS status,
+                            created_at
+                        FROM voice_calls
+                        WHERE client_id = %s
+                        ORDER BY created_at DESC
+                        """,
                         (client_id,)
                     )
                 else:
                     cursor.execute(
-                        "SELECT id, caller_name, phone, call_type, duration, status, created_at FROM voice_calls ORDER BY created_at DESC"
+                        """
+                        SELECT
+                            id,
+                            COALESCE(lead_name, caller_name, '') AS caller_name,
+                            phone,
+                            COALESCE(direction, call_type, '') AS call_type,
+                            COALESCE(duration_sec, duration, 0) AS duration,
+                            COALESCE(outcome, status, 'pending') AS status,
+                            created_at
+                        FROM voice_calls
+                        ORDER BY created_at DESC
+                        """
                     )
                 rows = cursor.fetchall()
                 return {"calls": [{"id":r[0],"name":r[1],"phone":r[2],"type":r[3],"duration":r[4],"status":r[5],"date":str(r[6])} for r in rows]}
