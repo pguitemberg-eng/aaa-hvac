@@ -371,7 +371,7 @@ def lookup_client_id_by_phone_number(phone_number: str) -> Optional[int]:
                 if normalized_candidates:
                     cur.execute(
                         """
-                        SELECT id, name, phone_number
+                        SELECT id, company_name, phone_number
                         FROM clients
                         WHERE regexp_replace(coalesce(phone_number, ''), '\D', '', 'g') = ANY(%s)
                         ORDER BY id
@@ -388,7 +388,7 @@ def lookup_client_id_by_phone_number(phone_number: str) -> Optional[int]:
                         )
                         return chosen
                 cur.execute(
-                    "SELECT id, name, phone_number FROM clients WHERE phone_number = %s ORDER BY id",
+                    "SELECT id, company_name, phone_number FROM clients WHERE phone_number = %s ORDER BY id",
                     (pn,),
                 )
                 exact_rows = cur.fetchall()
@@ -404,7 +404,7 @@ def lookup_client_id_by_phone_number(phone_number: str) -> Optional[int]:
                 # Extra diagnostics: show a few clients with their normalized values.
                 cur.execute(
                     """
-                    SELECT id, name, phone_number,
+                    SELECT id, company_name, phone_number,
                            regexp_replace(coalesce(phone_number, ''), '\D', '', 'g') AS normalized_phone
                     FROM clients
                     ORDER BY id
