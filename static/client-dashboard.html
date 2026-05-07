@@ -429,17 +429,24 @@ function initials(n){return(n||'?').split(' ').map(w=>w[0]).join('').slice(0,2).
 
 function render(data){
   const{leads,appointments,calls}=data;
+  const normalizedCalls=(calls||[]).map(c=>({
+    ...c,
+    name:c.lead_name||c.name||'Unknown',
+    type:c.direction||c.type||'inbound',
+    duration:(c.duration_sec!==undefined&&c.duration_sec!==null)?`${c.duration_sec}s`:(c.duration||'—'),
+    date:c.created_at||c.date||'—'
+  }));
   const qualified=leads.filter(l=>l.status==='qualified').length;
   document.getElementById('s-pipeline').textContent='$'+(qualified*2500).toLocaleString();
   document.getElementById('s-leads').textContent=leads.length;
   document.getElementById('s-appts').textContent=appointments.filter(a=>a.status==='scheduled').length;
-  document.getElementById('s-calls').textContent=calls.length;
+  document.getElementById('s-calls').textContent=normalizedCalls.length;
   document.getElementById('leads-badge').textContent=leads.length;
 
   // Activity
   const acts=[
     ...leads.slice(0,2).map(l=>({dot:'blue',text:`<strong>${l.name}</strong> captured via ${l.source||'AI'}`,time:l.date||'Recently'})),
-    ...calls.slice(0,2).map(c=>({dot:'green',text:`<strong>${c.name}</strong> — AI handled ${c.duration||'0:00'} call`,time:c.date||'Recently'})),
+    ...normalizedCalls.slice(0,2).map(c=>({dot:'green',text:`<strong>${c.name}</strong> — AI handled ${c.duration||'0:00'} call`,time:c.date||'Recently'})),
     ...appointments.slice(0,1).map(a=>({dot:'purple',text:`<strong>${a.name}</strong> booked ${a.type||'appointment'}`,time:a.date||'Recently'})),
   ].slice(0,5);
   document.getElementById('activity-feed').innerHTML=acts.length?acts.map(a=>`<div class="act-item"><div class="act-dot ${a.dot}"></div><div class="act-text">${a.text}</div><div class="act-time">${a.time}</div></div>`).join(''):'<div class="empty">No recent activity</div>';
@@ -456,7 +463,7 @@ function render(data){
   document.getElementById('pipeline-full').innerHTML=ph;
 
   // Calls mini
-  document.getElementById('calls-mini').innerHTML=calls.slice(0,4).map(c=>`<div class="call-row"><div class="call-av">${initials(c.name)}</div><div class="call-info"><div class="call-name">${c.name}</div><div class="call-meta">${c.phone} · <span class="badge badge-${c.type||'inbound'}">${c.type||'inbound'}</span></div></div><div class="call-right"><div class="call-dur">${c.duration||'—'}</div><div class="call-time-label">${c.date||'—'}</div></div></div>`).join('')||'<div class="empty">No calls yet</div>';
+  document.getElementById('calls-mini').innerHTML=normalizedCalls.slice(0,4).map(c=>`<div class="call-row"><div class="call-av">${initials(c.name)}</div><div class="call-info"><div class="call-name">${c.name}</div><div class="call-meta">${c.phone} · <span class="badge badge-${c.type||'inbound'}">${c.type||'inbound'}</span></div></div><div class="call-right"><div class="call-dur">${c.duration||'—'}</div><div class="call-time-label">${c.date||'—'}</div></div></div>`).join('')||'<div class="empty">No calls yet</div>';
 
   // Metrics
   const total=Math.max(leads.length,1);
@@ -507,7 +514,7 @@ function render(data){
   }).join('')||'<div class="empty">No appointments</div>';
 
   // Full calls
-  document.getElementById('calls-list').innerHTML=calls.map(c=>`<div class="call-row"><div class="call-av">${initials(c.name)}</div><div class="call-info"><div class="call-name">${c.name}</div><div class="call-meta">${c.phone}</div></div><span class="badge badge-${c.type||'inbound'}">${c.type||'inbound'}</span><div class="call-right" style="margin-left:12px"><div class="call-dur">${c.duration||'—'}</div><div class="call-time-label">${c.date||'—'}</div></div></div>`).join('')||'<div class="empty">No calls yet</div>';
+  document.getElementById('calls-list').innerHTML=normalizedCalls.map(c=>`<div class="call-row"><div class="call-av">${initials(c.name)}</div><div class="call-info"><div class="call-name">${c.name}</div><div class="call-meta">${c.phone}</div></div><span class="badge badge-${c.type||'inbound'}">${c.type||'inbound'}</span><div class="call-right" style="margin-left:12px"><div class="call-dur">${c.duration||'—'}</div><div class="call-time-label">${c.date||'—'}</div></div></div>`).join('')||'<div class="empty">No calls yet</div>';
 }
 
 function showTab(name,el){
