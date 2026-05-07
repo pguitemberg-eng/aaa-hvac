@@ -51,10 +51,11 @@ def _format_dt_short(dt: datetime) -> str:
 # ── DB helpers (PostgreSQL) ───────────────────────────────────────────────────
 
 def save_booking(data: dict) -> None:
-    lead_name = data.get("name", "")
-    phone = data.get("phone", "")
-    service_type = data.get("service_type", "HVAC service")
-    scheduled_at = data.get("scheduled_at")
+    # Be tolerant to alternate key names coming from different sources.
+    lead_name = data.get("name") or data.get("lead_name") or ""
+    phone = data.get("phone") or data.get("lead_phone") or ""
+    service_type = data.get("service_type") or data.get("issue") or "HVAC service"
+    scheduled_at = data.get("scheduled_at") or data.get("start_time") or ""
     client_id = data.get("client_id", 1)
     try:
         print(
@@ -208,6 +209,14 @@ async def process_confirmed_booking(booking_data: dict) -> None:
     urgency      = booking_data.get("urgency", "routine")
 
     print(f"[BOOKING] Processing confirmation for {name} ({phone}) | {scheduled_at}")
+
+    # Normalize keys so downstream DB writes always have populated fields.
+    booking_data["phone"] = phone or booking_data.get("lead_phone", "") or ""
+    booking_data["name"] = name or booking_data.get("lead_name", "") or "Customer"
+    booking_data["email"] = email or ""
+    booking_data["scheduled_at"] = scheduled_at or booking_data.get("start_time", "") or ""
+    booking_data["service_type"] = service_type or booking_data.get("issue", "") or "HVAC service"
+    booking_data["urgency"] = urgency or "routine"
 
     save_booking(booking_data)
     if phone:
