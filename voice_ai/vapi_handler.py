@@ -1206,7 +1206,7 @@ async def trigger_outbound_call(req: OutboundCallRequest):
     call_id = call_data.get("id", "unknown")
     ensure_voice_calls_table()
     log_call_postgres(call_id, lead_name=req.lead_name, phone=req.phone,
-             direction="outbound", outcome="pending")
+             direction="outbound", outcome="pending", client_id=DEFAULT_CLIENT_ID)
     return {"call_id": call_id, "status": "dialing", "phone": req.phone}
 
 
