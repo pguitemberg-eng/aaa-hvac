@@ -1079,6 +1079,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         transcript = message.get("transcript", "")
         customer_number = call.get("customer", {}).get("number", "")
         customer_name = call.get("customer", {}).get("name", "Unknown Caller")
+        duration = int(message.get("durationSeconds", 0) or 0)
         resolved_lead_name = (customer_name or "").strip()
         if not resolved_lead_name or resolved_lead_name.lower() in ("unknown", "unknown caller"):
             # Best-effort transcript fallback when Vapi customer.name is empty.
@@ -1115,6 +1116,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
                 client_id=resolved_client_id,
                 lead_name=resolved_lead_name,
                 phone=customer_number,
+                duration_sec=max(duration, 0),
                 outcome="completed",
             )
             update_call_postgres(
@@ -1122,7 +1124,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
                 client_id=resolved_client_id,
                 lead_name=resolved_lead_name,
                 phone=customer_number,
-                duration_sec=max(duration_sec, 0),
+                duration_sec=max(duration, duration_sec, 0),
                 full_transcript=transcript,
                 transcript_preview=(transcript or "")[:200],
                 outcome="completed",
@@ -1131,7 +1133,7 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
                 f"[VAPI END] voice_calls saved call_id={call_id!r} "
                 f"client_id={resolved_client_id!r} phone={customer_number!r} "
                 f"lead_name={resolved_lead_name!r} "
-                f"duration_sec={max(duration_sec, 0)!r} transcript_len={len(transcript or '')}"
+                f"duration_sec={max(duration, duration_sec, 0)!r} transcript_len={len(transcript or '')}"
             )
         except Exception as e:
             print(f"[VAPI END] voice_calls save failed: {e}")
