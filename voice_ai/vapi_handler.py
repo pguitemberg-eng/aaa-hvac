@@ -262,10 +262,12 @@ def log_call_postgres(call_id: str, **kwargs) -> None:
             fields = ", ".join(kwargs.keys())
             placeholders = ", ".join(["%s"] * len(kwargs))
             with conn.cursor() as cur:
+                print(f"[VOICE] About to save call_id={call_id} to voice_calls")
                 cur.execute(
                     f"INSERT INTO voice_calls (call_id, {fields}) VALUES (%s, {placeholders}) ON CONFLICT (call_id) DO NOTHING",
                     (call_id, *kwargs.values()),
                 )
+                print(f"[VOICE] Saved successfully")
             conn.commit()
     except Exception as e:
         print(f"[DB] log_call_postgres error: {e}")
