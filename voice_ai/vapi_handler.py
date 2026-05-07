@@ -256,13 +256,9 @@ debug_check_leads_source_column()
 
 
 def log_call_postgres(call_id: str, **kwargs) -> None:
-    database_url = (os.getenv("DATABASE_URL") or "").strip()
-    if not database_url:
-        print("[DB] log_call_postgres skipped: DATABASE_URL not set")
-        return
     try:
-        conn = psycopg2.connect(database_url)
-        try:
+        from db.postgres import get_conn
+        with get_conn() as conn:
             fields = ", ".join(kwargs.keys())
             placeholders = ", ".join(["%s"] * len(kwargs))
             with conn.cursor() as cur:
@@ -271,8 +267,6 @@ def log_call_postgres(call_id: str, **kwargs) -> None:
                     (call_id, *kwargs.values()),
                 )
             conn.commit()
-        finally:
-            conn.close()
     except Exception as e:
         print(f"[DB] log_call_postgres error: {e}")
 
