@@ -352,33 +352,75 @@ def lookup_client_id_by_phone_number(phone_number: str) -> Optional[int]:
     from db.postgres import get_conn
     pn = (phone_number or "").strip()
     if not pn:
+        print("[DB] client lookup skipped: empty phone_number input")
         return None
     digits = re.sub(r"\D", "", pn)
+    normalized_candidates = []
+    if digits:
+        normalized_candidates.append(digits)
+        # Many rows may store US numbers with/without leading country code.
+        if len(digits) == 11 and digits.startswith("1"):
+            normalized_candidates.append(digits[1:])
+        elif len(digits) == 10:
+            normalized_candidates.append("1" + digits)
+    # Preserve order while removing duplicates.
+    normalized_candidates = list(dict.fromkeys(normalized_candidates))
+    print(
+        f"[DB] client lookup start: raw_phone={pn!r} digits={digits!r} "
+        f"normalized_candidates={normalized_candidates!r}"
+    )
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
-                if digits:
+                if normalized_candidates:
                     cur.execute(
                         """
-                        SELECT id
+                        SELECT id, name, phone_number
                         FROM clients
-                        WHERE regexp_replace(coalesce(phone_number, ''), '\D', '', 'g') = %s
+                        WHERE regexp_replace(coalesce(phone_number, ''), '\D', '', 'g') = ANY(%s)
                         ORDER BY id
-                        LIMIT 1
                         """,
-                        (digits,),
+                        (normalized_candidates,),
                     )
-                    row = cur.fetchone()
-                    if row:
-                        return int(row[0])
+                    rows = cur.fetchall()
+                    print(f"[DB] client lookup normalized rows: {rows!r}")
+                    if rows:
+                        chosen = int(rows[0][0])
+                        print(
+                            f"[DB] client lookup resolved via normalized match: "
+                            f"client_id={chosen}"
+                        )
+                        return chosen
                 cur.execute(
-                    "SELECT id FROM clients WHERE phone_number = %s ORDER BY id LIMIT 1",
+                    "SELECT id, name, phone_number FROM clients WHERE phone_number = %s ORDER BY id",
                     (pn,),
                 )
-                row = cur.fetchone()
-                return int(row[0]) if row else None
+                exact_rows = cur.fetchall()
+                print(f"[DB] client lookup exact-string rows: {exact_rows!r}")
+                if exact_rows:
+                    chosen = int(exact_rows[0][0])
+                    print(
+                        f"[DB] client lookup resolved via exact string match: "
+                        f"client_id={chosen}"
+                    )
+                    return chosen
+
+                # Extra diagnostics: show a few clients with their normalized values.
+                cur.execute(
+                    """
+                    SELECT id, name, phone_number,
+                           regexp_replace(coalesce(phone_number, ''), '\D', '', 'g') AS normalized_phone
+                    FROM clients
+                    ORDER BY id
+                    LIMIT 20
+                    """
+                )
+                sample_rows = cur.fetchall()
+                print(f"[DB] client lookup no match. clients sample rows: {sample_rows!r}")
+                return None
     except Exception as e:
         print(f"[DB] client lookup by phone_number error: {e}")
+        traceback.print_exc()
         return None
 
 def insert_appointment_postgres(
@@ -1061,10 +1103,32 @@ async def vapi_webhook(request: Request, background_tasks: BackgroundTasks):
         except Exception:
             duration_sec = 0
 
-        update_call_postgres(call_id,
-                    duration_sec=max(duration_sec, 0),
-                    full_transcript=transcript,
-                    transcript_preview=transcript[:200])
+        # Ensure we always persist a row into voice_calls at end-of-call.
+        # Some Vapi setups may not emit "call-started" reliably, so we insert/upsert here too.
+        try:
+            log_call_postgres(
+                call_id,
+                client_id=resolved_client_id,
+                phone=customer_number,
+                outcome="completed",
+            )
+            update_call_postgres(
+                call_id,
+                client_id=resolved_client_id,
+                phone=customer_number,
+                duration_sec=max(duration_sec, 0),
+                full_transcript=transcript,
+                transcript_preview=(transcript or "")[:200],
+                outcome="completed",
+            )
+            print(
+                f"[VAPI END] voice_calls saved call_id={call_id!r} "
+                f"client_id={resolved_client_id!r} phone={customer_number!r} "
+                f"duration_sec={max(duration_sec, 0)!r} transcript_len={len(transcript or '')}"
+            )
+        except Exception as e:
+            print(f"[VAPI END] voice_calls save failed: {e}")
+            traceback.print_exc()
 
         if customer_number:
             source = f"Voice AI - {msg_type}"
