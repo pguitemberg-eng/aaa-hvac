@@ -12,6 +12,7 @@ Fixes applied:
 import hashlib
 import hmac
 import os
+import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -50,45 +51,62 @@ def _format_dt_short(dt: datetime) -> str:
 # ── DB helpers (PostgreSQL) ───────────────────────────────────────────────────
 
 def save_booking(data: dict) -> None:
-    with get_conn() as conn:
-        conn.execute(
-            """
-            INSERT INTO bookings
-                (calendly_event_id, lead_phone, lead_name, lead_email,
-                 service_type, urgency, scheduled_at, status, calendly_payload)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'confirmed', %s)
-            ON CONFLICT (calendly_event_id) DO UPDATE SET
-                status           = 'confirmed',
-                calendly_payload = EXCLUDED.calendly_payload,
-                updated_at       = NOW()
-            """,
-            (
-                data.get("event_id"),
-                data.get("phone"),
-                data.get("name"),
-                data.get("email"),
-                data.get("service_type", "HVAC service"),
-                data.get("urgency", "routine"),
-                data.get("scheduled_at"),
-                data.get("raw_payload", "")[:2000],
-            ),
+    lead_name = data.get("name", "")
+    phone = data.get("phone", "")
+    service_type = data.get("service_type", "HVAC service")
+    scheduled_at = data.get("scheduled_at")
+    client_id = data.get("client_id", 1)
+    try:
+        print(
+            "[BOOKING][SAVE_BOOKING] insert values "
+            f"lead_name={lead_name!r} phone={phone!r} "
+            f"service_type={service_type!r} scheduled_at={scheduled_at!r} "
+            f"client_id={client_id!r}"
         )
-        conn.execute(
-            """
-            INSERT INTO appointments
-                (lead_name, phone, email, service_type, scheduled_at, status, client_id)
-            VALUES (%s, %s, %s, %s, %s, 'scheduled', %s)
-            """,
-            (
-                data.get("name", ""),
-                data.get("phone", ""),
-                data.get("email", ""),
-                data.get("service_type", "HVAC service"),
-                data.get("scheduled_at"),
-                data.get("client_id", 1),
-            ),
-        )
-        conn.commit()
+        with get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO bookings
+                    (calendly_event_id, lead_phone, lead_name, lead_email,
+                     service_type, urgency, scheduled_at, status, calendly_payload)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'confirmed', %s)
+                ON CONFLICT (calendly_event_id) DO UPDATE SET
+                    status           = 'confirmed',
+                    calendly_payload = EXCLUDED.calendly_payload,
+                    updated_at       = NOW()
+                """,
+                (
+                    data.get("event_id"),
+                    phone,
+                    lead_name,
+                    data.get("email"),
+                    service_type,
+                    data.get("urgency", "routine"),
+                    scheduled_at,
+                    data.get("raw_payload", "")[:2000],
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO appointments
+                    (lead_name, phone, email, service_type, scheduled_at, status, client_id)
+                VALUES (%s, %s, %s, %s, %s, 'scheduled', %s)
+                """,
+                (
+                    lead_name,
+                    phone,
+                    data.get("email", ""),
+                    service_type,
+                    scheduled_at,
+                    client_id,
+                ),
+            )
+            conn.commit()
+        print("[BOOKING][SAVE_BOOKING] insert commit successful")
+    except Exception as exc:
+        print(f"[BOOKING][SAVE_BOOKING] error: {exc}")
+        traceback.print_exc()
+        raise
 
 
 def update_booking_status(event_id: str, status: str, reason: str = "") -> None:
