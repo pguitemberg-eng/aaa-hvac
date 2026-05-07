@@ -249,10 +249,17 @@ def _send_confirmation_sms(phone: str, name: str, service: str, display_time: st
             f"Our tech will arrive within the scheduled window. "
             f"Questions? Call {BUSINESS_PHONE}."
         )
-        send_sms(to=phone, body=body)
-        print(f"[BOOKING] Confirmation SMS sent to {phone}")
+        ok = send_sms(to=phone, body=body)
+        if ok:
+            print(f"[BOOKING] Confirmation SMS sent to {phone}")
+        else:
+            print(f"[BOOKING] Confirmation SMS failed for {phone}")
     except Exception as exc:
-        print(f"[BOOKING] SMS error: {exc}")
+        print(
+            f"[BOOKING] SMS error: type={type(exc).__name__} "
+            f"str(exc)={str(exc)!r} repr(exc)={repr(exc)}"
+        )
+        traceback.print_exc()
 
 
 def _send_confirmation_email(name: str, email: str, service: str,

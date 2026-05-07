@@ -1,4 +1,5 @@
 ﻿import os
+import traceback
 from twilio.rest import Client
 
 def send_sms(to: str, body: str) -> bool:
@@ -15,5 +16,9 @@ def send_sms(to: str, body: str) -> bool:
         print(f"[SMS] Sent to {to}")
         return True
     except Exception as e:
-        print(f"[SMS] Failed: {e}")
+        print(
+            f"[SMS] Failed: type={type(e).__name__} "
+            f"str(e)={str(e)!r} repr(e)={repr(e)}"
+        )
+        traceback.print_exc()
         return False
