@@ -365,11 +365,15 @@ async def get_voice_calls(client_id: int = None):
                         """
                         SELECT
                             id,
-                            COALESCE(lead_name, caller_name, '') AS caller_name,
+                            call_id,
+                            client_id,
+                            lead_name,
                             phone,
-                            COALESCE(direction, call_type, '') AS call_type,
-                            COALESCE(duration_sec, duration, 0) AS duration,
-                            COALESCE(outcome, status, 'pending') AS status,
+                            direction,
+                            duration_sec,
+                            outcome,
+                            transcript_preview,
+                            full_transcript,
                             created_at
                         FROM voice_calls
                         WHERE client_id = %s
@@ -382,18 +386,39 @@ async def get_voice_calls(client_id: int = None):
                         """
                         SELECT
                             id,
-                            COALESCE(lead_name, caller_name, '') AS caller_name,
+                            call_id,
+                            client_id,
+                            lead_name,
                             phone,
-                            COALESCE(direction, call_type, '') AS call_type,
-                            COALESCE(duration_sec, duration, 0) AS duration,
-                            COALESCE(outcome, status, 'pending') AS status,
+                            direction,
+                            duration_sec,
+                            outcome,
+                            transcript_preview,
+                            full_transcript,
                             created_at
                         FROM voice_calls
                         ORDER BY created_at DESC
                         """
                     )
                 rows = cursor.fetchall()
-                return {"calls": [{"id":r[0],"name":r[1],"phone":r[2],"type":r[3],"duration":r[4],"status":r[5],"date":str(r[6])} for r in rows]}
+                return {
+                    "calls": [
+                        {
+                            "id": r[0],
+                            "call_id": r[1],
+                            "client_id": r[2],
+                            "lead_name": r[3],
+                            "phone": r[4],
+                            "direction": r[5],
+                            "duration_sec": r[6],
+                            "outcome": r[7],
+                            "transcript_preview": r[8],
+                            "full_transcript": r[9],
+                            "created_at": str(r[10]),
+                        }
+                        for r in rows
+                    ]
+                }
     except Exception as e:
         return {"calls": [], "error": str(e)}
 
