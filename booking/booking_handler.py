@@ -105,11 +105,42 @@ def update_booking_status(event_id: str, status: str, reason: str = "") -> None:
 
 
 def get_lead_by_phone(phone: str) -> Optional[dict]:
+    raw_phone = (phone or "").strip()
+    if not raw_phone:
+        return None
+    digits = "".join(ch for ch in raw_phone if ch.isdigit())
+    normalized_candidates = []
+    if digits:
+        normalized_candidates.append(digits)
+        if len(digits) == 11 and digits.startswith("1"):
+            normalized_candidates.append(digits[1:])
+        elif len(digits) == 10:
+            normalized_candidates.append("1" + digits)
+    normalized_candidates = list(dict.fromkeys(normalized_candidates))
+
     with get_conn(row_factory=dict_row) as conn:
-        row = conn.execute(
-            "SELECT * FROM leads WHERE phone = %s ORDER BY created_at DESC LIMIT 1",
-            (phone,),
-        ).fetchone()
+        row = None
+        if normalized_candidates:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM leads
+                WHERE regexp_replace(coalesce(phone, ''), '\D', '', 'g') = ANY(%s)
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (normalized_candidates,),
+            ).fetchone()
+        if not row:
+            row = conn.execute(
+                "SELECT * FROM leads WHERE phone = %s ORDER BY created_at DESC LIMIT 1",
+                (raw_phone,),
+            ).fetchone()
+        print(
+            f"[BOOKING] lead lookup raw_phone={raw_phone!r} "
+            f"normalized_candidates={normalized_candidates!r} "
+            f"matched_client_id={(dict(row).get('client_id') if row else None)!r}"
+        )
         return dict(row) if row else None
 
 
