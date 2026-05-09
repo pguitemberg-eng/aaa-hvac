@@ -79,12 +79,45 @@ async def update_assistant_date():
         raise HTTPException(status_code=get_resp.status_code, detail="Failed to get assistant")
 
     assistant_data = get_resp.json()
-    current_prompt = assistant_data.get("model", {}).get("systemPrompt", "")
+    model_data = assistant_data.get("model", {}) or {}
+    model_payload = dict(model_data)
 
-    if "[DATE CONTEXT" in current_prompt:
-        current_prompt = current_prompt.split("\n\n[DATE CONTEXT")[0]
+    def _strip_date_context(prompt_text: str) -> str:
+        text = (prompt_text or "").rstrip()
+        marker = "\n\n[DATE CONTEXT"
+        idx = text.find(marker)
+        if idx != -1:
+            return text[:idx].rstrip()
+        idx = text.find("[DATE CONTEXT")
+        if idx != -1:
+            return text[:idx].rstrip()
+        return text
 
-    new_prompt = current_prompt + build_date_system_prompt()
+    if isinstance(model_payload.get("messages"), list) and model_payload.get("messages"):
+        messages = []
+        updated_system = False
+        for msg in model_payload.get("messages", []):
+            if isinstance(msg, dict):
+                msg_copy = dict(msg)
+                if (
+                    not updated_system
+                    and msg_copy.get("role") == "system"
+                    and isinstance(msg_copy.get("content"), str)
+                ):
+                    base_prompt = _strip_date_context(msg_copy.get("content", ""))
+                    msg_copy["content"] = base_prompt + build_date_system_prompt()
+                    updated_system = True
+                messages.append(msg_copy)
+            else:
+                messages.append(msg)
+
+        if not updated_system:
+            messages.insert(0, {"role": "system", "content": build_date_system_prompt().strip()})
+        model_payload["messages"] = messages
+    else:
+        current_prompt = _strip_date_context(model_payload.get("systemPrompt", ""))
+        model_payload["systemPrompt"] = current_prompt + build_date_system_prompt()
+
     first_message = build_first_message()
 
     print(f"[DATE-UPDATE] Updating assistant...")
@@ -94,11 +127,7 @@ async def update_assistant_date():
             f"{VAPI_BASE_URL}/assistant/{VAPI_ASSISTANT_ID}",
             json={
                 "firstMessage": first_message,
-                "model": {
-                    "provider": assistant_data.get("model", {}).get("provider", "openai"),
-                    "model": assistant_data.get("model", {}).get("model", "gpt-4"),
-                    "systemPrompt": new_prompt,
-                }
+                "model": model_payload,
             },
             headers={
                 "Authorization": f"Bearer {VAPI_API_KEY}",
