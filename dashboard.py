@@ -807,6 +807,151 @@ def render_prospects_page():
         st.download_button("📥 Export CSV", csv, "prospects.csv", "text/csv")
 
 
+def render_sms_blast_page():
+    import re
+    from twilio.rest import Client as TwilioClient
+
+    st.title("📱 SMS Blast")
+    st.caption("Send a message to multiple HVAC prospects at once.")
+
+    TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+    TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN", "")
+    TWILIO_FROM = os.getenv("TWILIO_FROM_NUMBER", "+18336144829")
+
+    tab1, tab2 = st.tabs(["📤 Send Blast", "📋 Blast History"])
+
+    with tab1:
+        # Load prospects
+        prospects_df = query_df(
+            "SELECT id, company_name, contact_name, phone, status FROM prospects WHERE phone IS NOT NULL AND phone != '' ORDER BY company_name"
+        )
+
+        if prospects_df.empty:
+            st.warning("No prospects with phone numbers. Add prospects first.")
+            return
+
+        st.subheader("1. Select Recipients")
+        status_filter = st.selectbox("Filter by status", ["All", "new", "contacted", "demo_scheduled", "proposal_sent"])
+        if status_filter != "All":
+            prospects_df = prospects_df[prospects_df["status"] == status_filter]
+
+        st.caption(f"{len(prospects_df)} prospects available")
+        selected_ids = st.multiselect(
+            "Select prospects to message",
+            prospects_df["id"].tolist(),
+            format_func=lambda i: f"{prospects_df[prospects_df['id']==i].iloc[0]['company_name']} ({prospects_df[prospects_df['id']==i].iloc[0]['phone']})"
+        )
+
+        st.markdown("---")
+        st.subheader("2. Write Your Message")
+
+        templates = {
+            "Custom": "",
+            "Cold Intro": "Hi, this is {name} from Midvio. We help HVAC companies like yours never miss a lead again with AI. Can I show you a quick demo this week?",
+            "Follow-up": "Hi! Just following up — Midvio's AI receptionist answers calls 24/7 and books appointments automatically. Worth a 10-min demo?",
+            "Urgency": "Last chance — we're onboarding 3 HVAC companies in Long Island this month. Midvio handles your calls and leads automatically. Interested?",
+        }
+        template_choice = st.selectbox("Message Template", list(templates.keys()))
+        message_text = st.text_area(
+            "Message (160 chars = 1 SMS)",
+            value=templates[template_choice],
+            height=120,
+            max_chars=320
+        )
+        st.caption(f"{len(message_text)} characters")
+
+        st.markdown("---")
+        st.subheader("3. Send")
+
+        if not selected_ids:
+            st.info("Select at least one prospect above.")
+        elif not message_text.strip():
+            st.warning("Write a message first.")
+        else:
+            st.info(f"Ready to send to **{len(selected_ids)} prospect(s)**")
+            confirm = st.checkbox("I confirm I want to send this SMS blast")
+            if confirm and st.button("🚀 Send SMS Blast", type="primary"):
+                if not TWILIO_SID or not TWILIO_AUTH:
+                    st.error("Twilio credentials missing in environment variables.")
+                    return
+
+                client = TwilioClient(TWILIO_SID, TWILIO_AUTH)
+                success_count = 0
+                fail_count = 0
+
+                # Ensure sms_blast_log table exists
+                execute("""
+                    CREATE TABLE IF NOT EXISTS sms_blast_log (
+                        id SERIAL PRIMARY KEY,
+                        prospect_id INTEGER,
+                        company_name TEXT,
+                        phone TEXT,
+                        message TEXT,
+                        status TEXT,
+                        error TEXT,
+                        sent_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+
+                progress = st.progress(0)
+                for idx, pid in enumerate(selected_ids):
+                    row = prospects_df[prospects_df["id"] == pid].iloc[0]
+                    phone = str(row["phone"]).strip()
+                    company = str(row["company_name"])
+
+                    # Normalize phone
+                    digits = re.sub(r"\D", "", phone)
+                    if len(digits) == 10:
+                        phone = f"+1{digits}"
+                    elif len(digits) == 11 and digits.startswith("1"):
+                        phone = f"+{digits}"
+
+                    try:
+                        client.messages.create(
+                            body=message_text,
+                            from_=TWILIO_FROM,
+                            to=phone
+                        )
+                        execute(
+                            "INSERT INTO sms_blast_log (prospect_id, company_name, phone, message, status) VALUES (%s,%s,%s,%s,'sent')",
+                            (int(pid), company, phone, message_text)
+                        )
+                        # Update prospect status to contacted
+                        execute(
+                            "UPDATE prospects SET status='contacted', updated_at=NOW() WHERE id=%s AND status='new'",
+                            (int(pid),)
+                        )
+                        success_count += 1
+                    except Exception as e:
+                        execute(
+                            "INSERT INTO sms_blast_log (prospect_id, company_name, phone, message, status, error) VALUES (%s,%s,%s,%s,'failed',%s)",
+                            (int(pid), company, phone, message_text, str(e))
+                        )
+                        fail_count += 1
+
+                    progress.progress((idx + 1) / len(selected_ids))
+
+                st.success(f"✅ Sent: {success_count} | ❌ Failed: {fail_count}")
+                st.rerun()
+
+    with tab2:
+        st.subheader("Blast History")
+        log_df = query_df(
+            "SELECT company_name, phone, message, status, error, sent_at FROM sms_blast_log ORDER BY sent_at DESC LIMIT 200"
+        )
+        if log_df.empty:
+            st.info("No blasts sent yet.")
+        else:
+            sent = int((log_df["status"] == "sent").sum())
+            failed = int((log_df["status"] == "failed").sum())
+            c1, c2 = st.columns(2)
+            with c1:
+                st.metric("Total Sent", sent)
+            with c2:
+                st.metric("Failed", failed)
+            st.dataframe(log_df, use_container_width=True, height=400)
+
+
 def render_system_status_page():
     st.title("Integration Status")
 
@@ -1145,6 +1290,7 @@ def main():
             "Voice Calls",
             "Lead Finder",
             "Prospects",
+            "SMS Blast",
             "System Status",
             "Inject Lead",
         ]
@@ -1177,6 +1323,7 @@ def main():
         "Voice Calls": render_voice_calls_page,
         "Lead Finder": render_lead_finder_page,
         "Prospects": render_prospects_page,
+        "SMS Blast": render_sms_blast_page,
         "System Status": render_system_status_page,
         "Inject Lead": render_inject_lead_page,
     }
