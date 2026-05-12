@@ -1,4 +1,4 @@
-﻿"""AAA HVAC multi-client Streamlit dashboard.
+﻿"""AAA HVAC multi-client Streamlit dashboard (prospects + pipeline, leads, calendar, voice, lead finder).
 
 Run: streamlit run dashboard.py
 """
@@ -168,6 +168,26 @@ def ensure_schema():
             status TEXT DEFAULT 'scheduled',
             notes TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """
+    )
+
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS prospects (
+            id SERIAL PRIMARY KEY,
+            company_name TEXT NOT NULL,
+            contact_name TEXT,
+            phone TEXT,
+            email TEXT,
+            city TEXT,
+            source TEXT DEFAULT 'manual',
+            status TEXT DEFAULT 'new',
+            follow_up_date DATE,
+            notes TEXT,
+            assigned_to TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
         )
         """
     )
@@ -588,6 +608,205 @@ def render_voice_calls_page():
     st.dataframe(df_calls, use_container_width=True, height=420)
 
 
+def render_prospects_page():
+    st.title("🎯 Prospects - Sales Tracker")
+    st.caption("Track every HVAC company you're trying to close as a Midvio client.")
+
+    tab1, tab2 = st.tabs(["➕ Add Prospect", "📋 My Prospects"])
+
+    with tab1:
+        st.subheader("Add New Prospect")
+        with st.form("add_prospect_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                company_name = st.text_input("Company Name *")
+                contact_name = st.text_input("Contact Name")
+                phone = st.text_input("Phone")
+                email = st.text_input("Email")
+            with c2:
+                city = st.text_input("City / Area", placeholder="e.g. Hempstead, Long Island")
+                source = st.selectbox(
+                    "Source",
+                    ["Instagram", "Google Maps", "Referral", "Cold Call", "Door Knock", "Other"],
+                )
+                assigned_to = st.text_input("Assigned To (team member)")
+                follow_up_date = st.date_input("Follow-up Date")
+            notes = st.text_area("Notes", placeholder="What did they say? What's their pain point?")
+            submitted = st.form_submit_button("Add Prospect", type="primary")
+
+        if submitted:
+            if not company_name:
+                st.error("Company name is required.")
+            else:
+                ok = execute(
+                    """INSERT INTO prospects
+                       (company_name, contact_name, phone, email, city, source, assigned_to, follow_up_date, notes)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (
+                        company_name.strip(),
+                        contact_name.strip(),
+                        phone.strip(),
+                        email.strip(),
+                        city.strip(),
+                        source,
+                        assigned_to.strip(),
+                        follow_up_date,
+                        notes.strip(),
+                    ),
+                )
+                if ok:
+                    st.success(f"✅ {company_name} added to prospects!")
+                    st.rerun()
+                else:
+                    st.error("Failed to add prospect.")
+
+    with tab2:
+        df = query_df("SELECT * FROM prospects ORDER BY created_at DESC LIMIT 500")
+
+        if df.empty:
+            st.info("No prospects yet. Add your first one!")
+            return
+
+        # Metrics
+        c1, c2, c3, c4, c5 = st.columns(5)
+        statuses = df["status"].value_counts().to_dict() if "status" in df.columns else {}
+        for col, label, key, color in [
+            (c1, "Total", None, "#1a7fd4"),
+            (c2, "New", "new", "#8ca0b8"),
+            (c3, "Demo Scheduled", "demo_scheduled", "#f59e0b"),
+            (c4, "Proposal Sent", "proposal_sent", "#00d4aa"),
+            (c5, "Closed Won", "closed_won", "#a855f7"),
+        ]:
+            val = len(df) if key is None else statuses.get(key, 0)
+            with col:
+                st.markdown(
+                    f'<div class="metric-card"><div class="metric-label">{label}</div>'
+                    f'<div class="metric-value" style="color:{color}">{val}</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown("---")
+
+        # Filters
+        fc1, fc2, fc3 = st.columns(3)
+        with fc1:
+            search = st.text_input("Search company/contact", "")
+        with fc2:
+            status_f = st.selectbox(
+                "Status",
+                [
+                    "All",
+                    "new",
+                    "contacted",
+                    "demo_scheduled",
+                    "proposal_sent",
+                    "closed_won",
+                    "closed_lost",
+                ],
+            )
+        with fc3:
+            assigned_f = st.text_input("Filter by team member", "")
+
+        filtered = df.copy()
+        if search:
+            filtered = filtered[
+                filtered["company_name"].str.contains(search, case=False, na=False)
+                | filtered["contact_name"].str.contains(search, case=False, na=False)
+            ]
+        if status_f != "All":
+            filtered = filtered[filtered["status"] == status_f]
+        if assigned_f:
+            filtered = filtered[
+                filtered["assigned_to"].str.contains(assigned_f, case=False, na=False)
+            ]
+
+        st.caption(f"{len(filtered)} prospects")
+
+        show_cols = [
+            "company_name",
+            "contact_name",
+            "phone",
+            "city",
+            "source",
+            "status",
+            "follow_up_date",
+            "assigned_to",
+            "notes",
+            "created_at",
+        ]
+        st.dataframe(
+            filtered[[c for c in show_cols if c in filtered.columns]],
+            use_container_width=True,
+            height=400,
+        )
+
+        st.markdown("---")
+        st.subheader("Update Prospect")
+        if not filtered.empty:
+            prospect_options = filtered["id"].tolist()
+            selected_id = st.selectbox(
+                "Select Prospect",
+                prospect_options,
+                format_func=lambda i: f"{filtered[filtered['id']==i].iloc[0]['company_name']}",
+            )
+            uc1, uc2 = st.columns(2)
+            with uc1:
+                new_status = st.selectbox(
+                    "New Status",
+                    [
+                        "new",
+                        "contacted",
+                        "demo_scheduled",
+                        "proposal_sent",
+                        "closed_won",
+                        "closed_lost",
+                    ],
+                )
+            with uc2:
+                new_follow_up = st.date_input("New Follow-up Date")
+            new_notes = st.text_area("Update Notes")
+            if st.button("Update Prospect", type="primary"):
+                ok = execute(
+                    "UPDATE prospects SET status=%s, follow_up_date=%s, notes=%s, updated_at=NOW() WHERE id=%s",
+                    (new_status, new_follow_up, new_notes, int(selected_id)),
+                )
+                if ok:
+                    st.success("Prospect updated!")
+                    st.rerun()
+                else:
+                    st.error("Failed to update.")
+
+            st.markdown("---")
+            if st.button("🗑️ Delete Prospect", type="secondary"):
+                ok = execute("DELETE FROM prospects WHERE id=%s", (int(selected_id),))
+                if ok:
+                    st.success("Deleted.")
+                    st.rerun()
+
+        # Follow-ups due today
+        st.markdown("---")
+        st.subheader("🔔 Follow-ups Due Today")
+        due = query_df(
+            """
+            SELECT company_name, contact_name, phone, notes
+            FROM prospects
+            WHERE follow_up_date <= CURRENT_DATE
+              AND status NOT IN ('closed_won','closed_lost')
+            ORDER BY follow_up_date ASC
+            LIMIT 20
+            """
+        )
+        if due.empty:
+            st.success("No follow-ups due today!")
+        else:
+            st.warning(f"{len(due)} prospect(s) need follow-up!")
+            st.dataframe(due, use_container_width=True, height=200)
+
+        # Export
+        csv = filtered.to_csv(index=False)
+        st.download_button("📥 Export CSV", csv, "prospects.csv", "text/csv")
+
+
 def render_system_status_page():
     st.title("Integration Status")
 
@@ -919,7 +1138,16 @@ def main():
         if auth_user["role"] == "client":
             st.caption(auth_user["company_name"])
 
-        pages = ["Pipeline", "Leads", "Appointments", "Voice Calls", "Lead Finder", "System Status", "Inject Lead"]
+        pages = [
+            "Pipeline",
+            "Leads",
+            "Appointments",
+            "Voice Calls",
+            "Lead Finder",
+            "Prospects",
+            "System Status",
+            "Inject Lead",
+        ]
         if auth_user["role"] == "admin":
             pages.insert(0, "Manage Clients")
 
@@ -948,6 +1176,7 @@ def main():
         "Appointments": render_calendar_page,
         "Voice Calls": render_voice_calls_page,
         "Lead Finder": render_lead_finder_page,
+        "Prospects": render_prospects_page,
         "System Status": render_system_status_page,
         "Inject Lead": render_inject_lead_page,
     }
