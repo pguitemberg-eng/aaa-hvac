@@ -906,8 +906,12 @@ async def handle_check_availability(args: dict) -> str:
 
 
 async def handle_book_appointment(args: dict, call_id: str) -> str:
+    from booking.booking_handler import log_book_appointment_tool_called
+
+    data = args if isinstance(args, dict) else {}
+    log_book_appointment_tool_called(data)
     print(f"[BOOKING] bookAppointment invoked call_id={call_id}")
-    raw = args if isinstance(args, dict) else {}
+    raw = data
     print(
         f"[BOOKING] raw appointment_time from Vapi (before parse): {raw.get('appointment_time')!r} "
         f"| raw keys: {list(raw.keys())}"

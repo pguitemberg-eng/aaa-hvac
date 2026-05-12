@@ -28,6 +28,12 @@ load_dotenv()
 
 router = APIRouter()
 
+
+def log_book_appointment_tool_called(data: dict) -> None:
+    """Vapi bookAppointment tool invokes the API webhook; log raw tool args."""
+    print(f"[BOOKING TOOL CALLED] data={data}")
+
+
 CALENDLY_WEBHOOK_SECRET = os.getenv("CALENDLY_WEBHOOK_SECRET", "")
 BUSINESS_NAME           = os.getenv("BUSINESS_NAME", "HVAC Pro")
 BUSINESS_PHONE          = os.getenv("BUSINESS_PHONE", "")
