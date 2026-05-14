@@ -1,0 +1,10 @@
+{
+  "steps": {
+    "install": {
+      "cmds": ["pip install -r requirements.txt"]
+    }
+  },
+  "deploy": {
+    "startCmd": "streamlit run dashboard.py --server.port $PORT --server.address 0.0.0.0"
+  }
+}
