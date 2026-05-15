@@ -403,7 +403,7 @@ async function doLogin(){
   err.style.display='none';
   if(!u||!p){err.textContent='Please enter credentials.';err.style.display='block';return;}
   try{
-    const r=await fetch(`${API}/client-login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const r=await fetch(`${API}/auth/dashboard`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
     const d=await r.json();
     console.log('Login response:', d);
     if(d.client_id){
