@@ -405,7 +405,11 @@ async function doLogin(){
   try{
     const r=await fetch(`${API}/client-login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
     const d=await r.json();
-    if(r.ok&&d.ok){CC={id:d.client_id,company:d.company_name,username:u};loadApp();return;}
+    if(r.ok&&d.ok&&d.client_id!=null){
+      CC={id:d.client_id,company:d.company_name,username:u};
+      loadApp();
+      return;
+    }
     err.textContent=d.detail||'Invalid credentials. Please try again.';
     err.style.display='block';
     return;
@@ -437,8 +441,19 @@ function doLogout(){
 async function loadData(){
   let data;
   try{
-    const[lr,ar,cr]=await Promise.all([fetch(`${API}/leads?client_id=${CC.id}`),fetch(`${API}/appointments?client_id=${CC.id}`),fetch(`${API}/voice-calls?client_id=${CC.id}`)]);
-    data={leads:(await lr.json()).leads||[],appointments:(await ar.json()).appointments||[],calls:(await cr.json()).calls||[],pipeline:[]};
+    const clientId=CC.id;
+    const[lr,ar,cr]=await Promise.all([
+      fetch(`${API}/leads?client_id=${clientId}`),
+      fetch(`${API}/appointments?client_id=${clientId}`),
+      fetch(`${API}/voice-calls?client_id=${clientId}`),
+    ]);
+    const leadsData=await lr.json();
+    const leads=leadsData.leads||[];
+    const appointmentsData=await ar.json();
+    const appointments=appointmentsData.appointments||[];
+    const callsData=await cr.json();
+    const calls=callsData.calls||[];
+    data={leads,appointments,calls,pipeline:[]};
   }catch(e){
     console.error('Failed to load dashboard data from API', e);
     data={leads:[],appointments:[],calls:[],pipeline:[]};
