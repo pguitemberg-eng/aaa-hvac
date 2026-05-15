@@ -474,15 +474,20 @@ async def client_login(data: dict):
                 if row:
                     stored_hash = row[4] or ""
                     password_ok = False
+                    pw = (data.get("password") or "").encode()
+                    pw_str = data.get("password") or ""
                     try:
                         if stored_hash.startswith("$2a$") or stored_hash.startswith("$2b$") or stored_hash.startswith("$2y$"):
-                            password_ok = bcrypt.checkpw(data['password'].encode(), stored_hash.encode())
+                            password_ok = bcrypt.checkpw(pw, stored_hash.encode())
                     except Exception:
                         password_ok = False
 
                     if not password_ok:
-                        legacy_hash = hashlib.sha256(data['password'].encode()).hexdigest()
-                        password_ok = (legacy_hash == stored_hash)
+                        legacy_hash = hashlib.sha256(pw).hexdigest()
+                        password_ok = legacy_hash == stored_hash
+
+                    if not password_ok:
+                        password_ok = pw_str == stored_hash
 
                     if row[3] and password_ok:
                         return {"ok": True, "client_id": row[0], "company_name": row[1], "username": row[2]}
