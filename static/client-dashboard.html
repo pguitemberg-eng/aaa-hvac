@@ -405,17 +405,17 @@ async function doLogin(){
   try{
     const r=await fetch(`${API}/client-login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
     const d=await r.json();
-    if(r.ok&&d.ok&&d.client_id!=null){
+    console.log('Login response:', d);
+    if(d.client_id){
       CC={id:d.client_id,company:d.company_name,username:u};
       loadApp();
       return;
     }
-    err.textContent=d.detail||'Invalid credentials. Please try again.';
+    err.textContent=d.detail||'Invalid credentials.';
     err.style.display='block';
-    return;
   }catch(e){
     console.error('Login failed',e);
-    err.textContent='Unable to reach the server. Please try again.';
+    err.textContent='Unable to reach the server.';
     err.style.display='block';
   }
 }
