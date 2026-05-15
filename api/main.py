@@ -457,7 +457,6 @@ async def get_clients():
 @app.post("/client-login")
 async def client_login(data: dict):
     import bcrypt
-    import hashlib
     try:
         from db.postgres import get_conn
         db_url = (os.getenv("DATABASE_URL", "") or "").strip()
@@ -474,20 +473,17 @@ async def client_login(data: dict):
                 if row:
                     stored_hash = row[4] or ""
                     password_ok = False
-                    pw = (data.get("password") or "").encode()
                     pw_str = data.get("password") or ""
                     try:
-                        if stored_hash.startswith("$2a$") or stored_hash.startswith("$2b$") or stored_hash.startswith("$2y$"):
-                            password_ok = bcrypt.checkpw(pw, stored_hash.encode())
+                        if stored_hash.startswith(('$2b$', '$2a$', '$2y$')):
+                            password_ok = bcrypt.checkpw(
+                                pw_str.encode('utf-8'),
+                                stored_hash.encode('utf-8'),
+                            )
+                        else:
+                            password_ok = pw_str == stored_hash
                     except Exception:
                         password_ok = False
-
-                    if not password_ok:
-                        legacy_hash = hashlib.sha256(pw).hexdigest()
-                        password_ok = legacy_hash == stored_hash
-
-                    if not password_ok:
-                        password_ok = pw_str == stored_hash
 
                     if row[3] and password_ok:
                         return {"ok": True, "client_id": row[0], "company_name": row[1], "username": row[2]}
